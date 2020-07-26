@@ -58,3 +58,15 @@ def preprocess_image(image):
     image = (image / 255.0 - channel_avg) / channel_std
 
     return image, build_mask(image)
+
+
+def unpreprocess(image):
+    channel_avg = tf.constant([0.485, 0.456, 0.406])
+    channel_std = tf.constant([0.229, 0.224, 0.225])
+
+    image = image * channel_std
+    image = image + channel_avg
+    image = image * 255.0
+    image = tf.cast(image, tf.uint8)
+
+    return image
