@@ -26,3 +26,8 @@ def pairwise_l2(a, b):
     x = tf.reduce_sum(x, -1)
     x = tf.sqrt(x)
     return x
+
+# @tf.function
+# def tf_linear_sum_assignment(cost_matrix):
+#     assignment = tf.py_function(func=linear_sum_assignment, inp=[cost_matrix], Tout=[tf.int64, tf.int64])
+#     return assignment
