@@ -78,6 +78,23 @@ C_split = tf.split(C, sizes, -1)
 indices = [linear_sum_assignment(c[i]) for i, c in enumerate(C_split)]
 indices = [(tf.convert_to_tensor(i, dtype=tf.int32), tf.convert_to_tensor(j, dtype=tf.int32)) for i, j in indices]
 
+#%%
+y_pred_box.shape
+y_true_box.shape
+
+C.shape
+C_split[0].shape
+C_split[1].shape
+[c[i].shape for i, c in enumerate(C_split)]
+
+cb0 = C_split[0][0]
+cb1 = C_split[1][1]
+
+cb0.shape
+cb1.shape
+linear_sum_assignment(cb0)
+linear_sum_assignment(cb1)
+
 # %% # Get box assignments
 row_idx = tf.concat([tf.fill(q_idx.shape, i) for i, (q_idx, k_idx) in enumerate(indices)], axis=0)
 col_idx = tf.concat([q_idx for (q_idx, k_idx) in indices], axis=0)
