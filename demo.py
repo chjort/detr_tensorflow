@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 
 from models import build_detr_resnet50
-from utils import read_jpeg_image, preprocess_image, absolute2relative
+from utils import read_jpeg, preprocess_image, absolute2relative
 
 
 def plot_results(img, labels, probs, boxes):
@@ -50,7 +50,7 @@ CLASSES = [
 COLORS = [[0.000, 0.447, 0.741], [0.850, 0.325, 0.098], [0.929, 0.694, 0.125],
           [0.494, 0.184, 0.556], [0.466, 0.674, 0.188], [0.301, 0.745, 0.933]]
 
-image = read_jpeg_image(path.join('samples', 'sample_1.jpg'))
+image = read_jpeg(path.join('samples', 'sample_1.jpg'))
 
 # %%
 inp_image, mask = preprocess_image(image)

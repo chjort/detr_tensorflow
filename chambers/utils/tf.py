@@ -27,6 +27,12 @@ def pairwise_l2(a, b):
     x = tf.sqrt(x)
     return x
 
+
+def round(x, decimals=0):
+    mult = tf.constant(10 ** decimals, dtype=x.dtype)
+    rounded = tf.round(x * mult) / mult
+    return rounded
+
 # @tf.function
 # def tf_linear_sum_assignment(cost_matrix):
 #     assignment = tf.py_function(func=linear_sum_assignment, inp=[cost_matrix], Tout=[tf.int64, tf.int64])

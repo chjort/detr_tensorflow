@@ -73,8 +73,6 @@ class CocoDetection(tf.keras.utils.Sequence):
                 continue
             box = ann['bbox']
             label = ann['category_id']
-            # box = np.array(box, dtype=np.float32)
-            # box[2:4] += box[0:2]  # [center_x, center_y, width, height] -> []
             boxes.append(box)
             labels.append(label)
         return boxes, labels

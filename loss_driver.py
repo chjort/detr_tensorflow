@@ -78,6 +78,9 @@ C_split = tf.split(C, sizes, -1)
 indices = [linear_sum_assignment(c[i]) for i, c in enumerate(C_split)]
 indices = [(tf.convert_to_tensor(i, dtype=tf.int32), tf.convert_to_tensor(j, dtype=tf.int32)) for i, j in indices]
 
+# TODO: Investigate getting the final losses directly from C using the LSA indices, instead of getting bounding boxes
+# from LSA indices and then computing loss.
+
 #%%
 y_pred_box.shape
 y_true_box.shape

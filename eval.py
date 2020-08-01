@@ -7,7 +7,7 @@ from tqdm import tqdm
 
 from datasets import COCODatasetBBoxes
 import models
-from utils import preprocess_image, read_jpeg_image, absolute2relative, xyxy2xywh
+from utils import preprocess_image, read_jpeg, absolute2relative, xyxy2xywh
 
 
 parser = argparse.ArgumentParser('DETR evalutaion script for the COCO dataset.')
@@ -64,7 +64,7 @@ detr.load_from_pickle(args.frozen_weights)
 
 
 dataset = tf.data.Dataset.from_generator(lambda: coco_data, (tf.int32, tf.string))
-dataset = dataset.map(lambda img_id, img_path: (img_id, read_jpeg_image(img_path)))
+dataset = dataset.map(lambda img_id, img_path: (img_id, read_jpeg(img_path)))
 dataset = dataset.map(lambda img_id, image: (img_id, *preprocess_image(image)))
 
 dataset = dataset.padded_batch(batch_size=args.batch_size,

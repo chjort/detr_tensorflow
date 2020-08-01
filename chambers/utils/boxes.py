@@ -17,12 +17,23 @@ def box_area(boxes):
 
 
 # TODO: put in metrics
-def boxes_iou(boxes1, boxes2):
-    b1_area = box_area(boxes1)
-    b2_area = box_area(boxes2)
+def boxes_iou(y_pred, y_true):
+    """
+    Computes IOU between predicted bounding boxes and ground truth bounding boxes.
+    The bounding boxes are expected to have format [x0, y0, x1, y1].
 
-    left_top = tf.maximum(boxes1[:, None, :2], boxes2[:, :2])
-    right_bottom = tf.minimum(boxes1[:, None, 2:], boxes2[:, 2:])
+    :param y_pred: Predicted bounding box with format [x0, y0, x1, y1].
+    :type y_pred: tensorflow.Tensor
+    :param y_true: Ground truth bounding box with format [x0, y0, x1, y1].
+    :type y_true: tensorflow.Tensor
+    :return: Intersection over union between y_pred and y_true
+    :rtype: tensorflow.Tensor
+    """
+    b1_area = box_area(y_pred)
+    b2_area = box_area(y_true)
+
+    left_top = tf.maximum(y_pred[:, None, :2], y_true[:, :2])
+    right_bottom = tf.minimum(y_pred[:, None, 2:], y_true[:, 2:])
 
     wh = right_bottom - left_top
     wh = tf.clip_by_value(wh, 0, tf.reduce_max(wh))
@@ -34,11 +45,22 @@ def boxes_iou(boxes1, boxes2):
     return iou, union
 
 
-def boxes_giou(boxes1, boxes2):
-    iou, union = boxes_iou(boxes1, boxes2)
+def boxes_giou(y_pred, y_true):
+    """
+    Computes Generalized IOU between predicted bounding boxes and ground truth bounding boxes.
+    The bounding boxes are expected to have format [x0, y0, x1, y1].
 
-    left_bottom = tf.minimum(boxes1[:, None, :2], boxes2[:, :2])
-    right_top = tf.maximum(boxes1[:, None, 2:], boxes2[:, 2:])
+    :param y_pred: Predicted bounding box with format [x0, y0, x1, y1].
+    :type y_pred: tensorflow.Tensor
+    :param y_true: Ground truth bounding box with format [x0, y0, x1, y1].
+    :type y_true: tensorflow.Tensor
+    :return: Generalized intersection over union between y_pred and y_true
+    :rtype: tensorflow.Tensor
+    """
+    iou, union = boxes_iou(y_pred, y_true)
+
+    left_bottom = tf.minimum(y_pred[:, None, :2], y_true[:, :2])
+    right_top = tf.maximum(y_pred[:, None, 2:], y_true[:, 2:])
 
     wh = right_top - left_bottom
     wh = tf.clip_by_value(wh, 0, tf.reduce_max(wh))
@@ -49,87 +71,205 @@ def boxes_giou(boxes1, boxes2):
     return giou
 
 
+### TO XYXY ###
+def box_yxyx_to_xyxy(x):
+    """ Converts bounding box with format [y0, x0, y1, x1] to format [x0, y0, x1, y1] """
+    y0, x0, y1, x1 = tf.unstack(x, 4, axis=1)
+    b = [
+        x0,
+        y0,
+        x1,
+        y1
+    ]
+    return tf.stack(b, axis=-1)
+
+
+def box_xywh_to_xyxy(x):
+    """ Converts bounding box with format [x0, y0, w, h] to format [x0, y0, x1, y1] """
+    x0, y0, w, h = tf.unstack(x, 4, axis=1)
+    b = [
+        x0,
+        y0,
+        x0 + w,
+        y0 + h
+    ]
+    return tf.stack(b, axis=-1)
+
+
 def box_cxcywh_to_xyxy(x):
-    x_c, y_c, w, h = tf.unstack(x, 4, axis=1)
-    b = [(x_c - 0.5 * w), (y_c - 0.5 * h),
-         (x_c + 0.5 * w), (y_c + 0.5 * h)]
+    """ Converts bounding box with format [center_x, center_y, w, h] to format [x0, y0, x1, y1] """
+    cx, cy, w, h = tf.unstack(x, 4, axis=1)
+    b = [
+        cx - 0.5 * w,
+        cy - 0.5 * h,
+        cx + 0.5 * w,
+        cy + 0.5 * h
+    ]
+    return tf.stack(b, axis=-1)
+
+
+### TO YXYX ###
+def box_xyxy_to_yxyx(x):
+    """ Converts bounding box with format [x0, y0, x1, y1] to format [y0, x0, y1, x1] """
+    x0, y0, x1, y1 = tf.unstack(x, 4, axis=1)
+    b = [
+        y0,
+        x0,
+        y1,
+        x1
+    ]
+    return tf.stack(b, axis=-1)
+
+
+def box_xywh_to_yxyx(x):
+    """ Converts bounding box with format [x0, y0, w, h] to format [y0, x0, y1, x1] """
+    x0, y0, w, h = tf.unstack(x, 4, axis=1)
+    b = [
+        y0,
+        x0,
+        y0 + h,
+        x0 + w
+    ]
     return tf.stack(b, axis=-1)
 
 
 def box_cxcywh_to_yxyx(x):
-    x_c, y_c, w, h = tf.unstack(x, 4, axis=1)
-    b = [(y_c - 0.5 * h), (x_c - 0.5 * w),
-         (y_c + 0.5 * h), (x_c + 0.5 * w)]
+    """ Converts bounding box with format [center_x, center_y, w, h] to format [y0, x0, y1, x1] """
+    cx, cy, w, h = tf.unstack(x, 4, axis=1)
+    b = [
+        cy - 0.5 * h,
+        cx - 0.5 * w,
+        cy + 0.5 * h,
+        cx + 0.5 * w
+    ]
     return tf.stack(b, axis=-1)
 
 
-def box_xyxy_to_cxcywh(x):
+### TO XYWH ###
+def box_xyxy_to_xywh(x):
+    """ Converts bounding box with format [x0, y0, x1, y1] to format [x0, y0, w, h] """
     x0, y0, x1, y1 = tf.unstack(x, 4, axis=1)
-    b = [(x0 + x1) / 2, (y0 + y1) / 2,
-         (x1 - x0), (y1 - y0)]
+    b = [
+        x0,
+        y0,
+        x1 - x0,
+        y1 - y0
+    ]
     return tf.stack(b, axis=-1)
 
 
-def boxes_resize_guard(boxes, img_h, img_w):
-    """
-    TODO
+def box_yxyx_to_xywh(x):
+    """ Converts bounding box with format [y0, x0, y1, x1] to format [x0, y0, w, h] """
+    y0, x0, y1, x1 = tf.unstack(x, 4, axis=1)
+    b = [
+        x0,
+        y0,
+        x1 - x0,
+        y1 - y0
+    ]
+    return tf.stack(b, axis=-1)
 
-    :param boxes: Bounding boxes with format [x, y, w, h]
-    :type boxes: tensorflow.Tensor
-    :param img_h: Height of image the bounding boxes belong to.
-    :type img_h: int
-    :param img_w: Widht of image the bounding boxes belong to.
-    :type img_w: int
-    :return: Bounding boxes TODO
+
+def box_cxcywh_to_xywh(x):
+    """ Converts bounding box with format [center_x, center_y, w, h] to format [x0, y0, w, h] """
+    cx, cy, w, h = tf.unstack(x, 4, axis=1)
+    b = [
+        cx - 0.5 * w,
+        cy - 0.5 * h,
+        w,
+        h
+    ]
+    return tf.stack(b, axis=-1)
+
+
+### TO CXCYWH ###
+def box_xyxy_to_cxcywh(x):
+    """ Converts bounding box with format [x0, y0, x1, y1] to format [center_x, center_y, w, h] """
+    x0, y0, x1, y1 = tf.unstack(x, 4, axis=1)
+    b = [
+        (x0 + x1) / 2,
+        (y0 + y1) / 2,
+        x1 - x0,
+        y1 - y0
+    ]
+    return tf.stack(b, axis=-1)
+
+
+def box_yxyx_to_cxcywh(x):
+    """ Converts bounding box with format [y0, x0, y1, x1] to format [center_x, center_y, w, h] """
+    y0, x0, y1, x1 = tf.unstack(x, 4, axis=1)
+    b = [
+        (x0 + x1) / 2,
+        (y0 + y1) / 2,
+        x1 - x0,
+        y1 - y0
+    ]
+    return tf.stack(b, axis=-1)
+
+
+def box_xywh_to_cxcywh(x):
+    """ Converts bounding box with format [x0, y0, w, h] to format [center_x, center_y, w, h] """
+    x0, y0, w, h = tf.unstack(x, 4, axis=1)
+    b = [
+        x0 + 0.5 * w,
+        y0 + 0.5 * h,
+        w,
+        h
+    ]
+    return tf.stack(b, axis=-1)
+
+
+def box_normalize_xyxy(boxes, img_h, img_w):
+    """
+    Normalizes bounding box to have coordinates between 0 and 1. Bounding boxes are expected to
+    have format [x0, y0, x1, y1].
+
+    :param boxes: List of bounding boxes each with format [x0, y0, x1, y1]
+    :type boxes: list[list] or tensorflow.Tensor
+    :param img_h: The height of the image the bounding box belongs to.
+    :type img_h: int or tensorflow.Tensor
+    :param img_w: The width of the image the bounding box belongs to.
+    :type img_w: int or tensorflow.Tensor
+    :return: Normalized bounding boxes.
     :rtype: tensorflow.Tensor
     """
 
-    nboxes = tf.shape(boxes)[0]
-    row_idx = tf.range(nboxes)
-    x_coords = tf.stack([row_idx, tf.repeat(0, nboxes)], axis=1)
-    y_coords = tf.stack([row_idx, tf.repeat(1, nboxes)], axis=1)
-    w_coords = tf.stack([row_idx, tf.repeat(2, nboxes)], axis=1)
-    h_coords = tf.stack([row_idx, tf.repeat(3, nboxes)], axis=1)
-
-    xw_coords = tf.concat([x_coords, w_coords], axis=0)
-    yh_coords = tf.concat([y_coords, h_coords], axis=0)
-    xy_coords = tf.concat([x_coords, y_coords], axis=0)
-    wh_coords = tf.concat([w_coords, h_coords], axis=0)
-
-    xw_values = tf.gather_nd(boxes, xw_coords)  # boxes[:, 0::2]
-    yh_values = tf.gather_nd(boxes, yh_coords)  # boxes[:, 1::2]
-    xy_values = tf.gather_nd(boxes, xy_coords)  # boxes[:, :2]
-
-    boxes = tf.tensor_scatter_nd_add(boxes, wh_coords, xy_values) # boxes[:, 2:] += boxes[:, :2]
-
-    # zero = tf.constant(0, dtype=tf.float32)
-    # img_w = tf.cast(img_w, tf.float32)
-    # img_h = tf.cast(img_h, tf.float32)
-    # boxes = tf.tensor_scatter_nd_update(boxes, xw_coords, tf.clip_by_value(xw_values, zero, img_w))
-    # boxes = tf.tensor_scatter_nd_update(boxes, yh_coords, tf.clip_by_value(yh_values, zero, img_h))
-
+    boxes = boxes / tf.cast(tf.stack([img_w, img_h, img_w, img_h]), tf.float32)  # boxes / [w, h, w, h]
     return boxes
 
 
-def normalize_boxes(boxes, img_h, img_w):
-    nboxes = tf.shape(boxes)[0]
-    row_idx = tf.range(nboxes)
-    x_coords = tf.stack([row_idx, tf.repeat(0, nboxes)], axis=1)
-    y_coords = tf.stack([row_idx, tf.repeat(1, nboxes)], axis=1)
-    w_coords = tf.stack([row_idx, tf.repeat(2, nboxes)], axis=1)
-    h_coords = tf.stack([row_idx, tf.repeat(3, nboxes)], axis=1)
+def box_normalize_yxyx(boxes, img_h, img_w):
+    """
+    Normalizes bounding box to have coordinates between 0 and 1. Bounding boxes are expected to
+    have format [y0, x0, y1, x1].
 
-    xw_coords = tf.concat([x_coords, w_coords], axis=0)
-    yh_coords = tf.concat([y_coords, h_coords], axis=0)
-    xy_coords = tf.concat([x_coords, y_coords], axis=0)
-    # wh_coords = tf.concat([w_coords, h_coords], axis=0)
+    :param boxes: List of bounding boxes each with format [y0, x0, y1, x1]
+    :type boxes: list[list] or tensorflow.Tensor
+    :param img_h: The height of the image the bounding box belongs to.
+    :type img_h: int or tensorflow.Tensor
+    :param img_w: The width of the image the bounding box belongs to.
+    :type img_w: int or tensorflow.Tensor
+    :return: Normalized bounding boxes.
+    :rtype: tensorflow.Tensor
+    """
 
-    xw_values = tf.gather_nd(boxes, xw_coords)
-    yh_values = tf.gather_nd(boxes, yh_coords)
-    # xy_values = tf.gather_nd(boxes, xy_coords)
-
-    img_w = tf.cast(img_w, tf.float32)
-    img_h = tf.cast(img_h, tf.float32)
-    boxes = tf.tensor_scatter_nd_update(boxes, xw_coords, xw_values / img_w)
-    boxes = tf.tensor_scatter_nd_update(boxes, yh_coords, yh_values / img_h)
+    boxes = boxes / tf.cast(tf.stack([img_h, img_w, img_h, img_w]), tf.float32)  # boxes / [h, w, h, w]
     return boxes
+
+
+def box_normalize_xywh(boxes, img_h, img_w):
+    return box_normalize_xyxy(boxes, img_h, img_w)
+
+
+def box_normalize_cxcywh(boxes, img_h, img_w):
+    return box_normalize_xyxy(boxes, img_h, img_w)
+
+
+def get(identifier):
+    funcs = globals()
+    if type(identifier) == str:
+        f = funcs[identifier]
+    else:
+        raise ValueError("Argument 'identifier' must be type string.")
+
+    return f

@@ -1,7 +1,7 @@
 import tensorflow as tf
 
 
-def read_jpeg_image(img_path):
+def read_jpeg(img_path):
     image = tf.io.read_file(img_path)
     image = tf.image.decode_jpeg(image, channels=3)
     return image
@@ -50,17 +50,17 @@ def xyxy2xywh(boxes):
     return tf.stack([xmin, ymin, xmax - xmin, ymax - ymin], axis=-1)
 
 
-def preprocess_image(image):
-    image = resize(image, min_side=800.0, max_side=1333.0)
+def normalize_image(image):
+    image = tf.cast(image, dtype=tf.float32)
+    channel_avg = tf.constant([0.485, 0.456, 0.406], dtype=tf.float32)
+    channel_std = tf.constant([0.229, 0.224, 0.225], dtype=tf.float32)
 
-    channel_avg = tf.constant([0.485, 0.456, 0.406])
-    channel_std = tf.constant([0.229, 0.224, 0.225])
     image = (image / 255.0 - channel_avg) / channel_std
+    return image
 
-    return image, build_mask(image)
 
-
-def unpreprocess(image):
+def denormalize_image(image):
+    image = tf.cast(image, dtype=tf.float32)
     channel_avg = tf.constant([0.485, 0.456, 0.406])
     channel_std = tf.constant([0.229, 0.224, 0.225])
 
@@ -68,5 +68,11 @@ def unpreprocess(image):
     image = image + channel_avg
     image = image * 255.0
     image = tf.cast(image, tf.uint8)
-
     return image
+
+
+def preprocess_image(image):
+    image = resize(image, min_side=800.0, max_side=1333.0)
+    image = normalize_image(image)
+
+    return image, build_mask(image)
