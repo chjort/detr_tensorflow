@@ -60,10 +60,10 @@ class CocoDetection(tf.keras.utils.Sequence):
     def __getitem__(self, idx):
         img_info = self.coco.loadImgs(self.img_ids[idx])[0]
         img_path = path.join(self.cocopath, self.partition, img_info['file_name'])
-        img_shape = (img_info["height"], img_info["width"])
+        # img_shape = (img_info["height"], img_info["width"])
         ann_ids = self.coco.getAnnIds(self.img_ids[idx])
         boxes, labels = self.parse_annotations(ann_ids)
-        return img_path, img_shape, boxes, labels
+        return img_path, boxes, labels#, img_shape
 
     def parse_annotations(self, ann_ids):
         boxes = []
