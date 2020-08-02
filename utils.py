@@ -1,3 +1,4 @@
+import matplotlib.pyplot as plt
 import tensorflow as tf
 
 
@@ -7,12 +8,14 @@ def read_jpeg(img_path):
     return image
 
 
-def resize(image, min_side=800.0, max_side=1333.0):
+def resize(image, min_side=800, max_side=1333):
     h = tf.cast(tf.shape(image)[0], tf.float32)
     w = tf.cast(tf.shape(image)[1], tf.float32)
     cur_min_side = tf.minimum(w, h)
     cur_max_side = tf.maximum(w, h)
 
+    min_side = tf.cast(min_side, tf.float32)
+    max_side = tf.cast(max_side, tf.float32)
     scale = tf.minimum(max_side / cur_max_side,
                        min_side / cur_min_side)
     nh = tf.cast(scale * h, tf.int32)
@@ -72,7 +75,44 @@ def denormalize_image(image):
 
 
 def preprocess_image(image):
-    image = resize(image, min_side=800.0, max_side=1333.0)
+    image = resize(image, min_side=800, max_side=1333)
     image = normalize_image(image)
 
     return image, build_mask(image)
+
+
+def plot_results(img, labels, probs, boxes):
+    CLASSES = [
+        'N/A', 'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus',
+        'train', 'truck', 'boat', 'traffic light', 'fire hydrant', 'N/A',
+        'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse',
+        'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'N/A', 'backpack',
+        'umbrella', 'N/A', 'N/A', 'handbag', 'tie', 'suitcase', 'frisbee', 'skis',
+        'snowboard', 'sports ball', 'kite', 'baseball bat', 'baseball glove',
+        'skateboard', 'surfboard', 'tennis racket', 'bottle', 'N/A', 'wine glass',
+        'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple', 'sandwich',
+        'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake',
+        'chair', 'couch', 'potted plant', 'bed', 'N/A', 'dining table', 'N/A',
+        'N/A', 'toilet', 'N/A', 'tv', 'laptop', 'mouse', 'remote', 'keyboard',
+        'cell phone', 'microwave', 'oven', 'toaster', 'sink', 'refrigerator', 'N/A',
+        'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier',
+        'toothbrush'
+    ]
+
+    # colors for visualization
+    COLORS = [[0.000, 0.447, 0.741], [0.850, 0.325, 0.098], [0.929, 0.694, 0.125],
+              [0.494, 0.184, 0.556], [0.466, 0.674, 0.188], [0.301, 0.745, 0.933]]
+
+    plt.figure(figsize=(16, 10))
+    plt.imshow(img)
+    ax = plt.gca()
+    for cl, p, (xmin, ymin, xmax, ymax), c in zip(
+            labels, probs, boxes.tolist(), COLORS * 100):
+        ax.add_patch(plt.Rectangle((xmin, ymin), xmax - xmin, ymax - ymin,
+                                   fill=False, color=c, linewidth=3))
+        text = f'{CLASSES[cl]}: {p:0.2f}'
+        ax.text(xmin, ymin, text, fontsize=15,
+                bbox=dict(facecolor='yellow', alpha=0.5))
+    plt.axis('off')
+    plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
+    plt.show()

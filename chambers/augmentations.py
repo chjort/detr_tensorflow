@@ -3,16 +3,26 @@ import tensorflow as tf
 from utils import resize as _resize
 
 
-def resize(img, box):
-    imgr = _resize(img)
+def resize(img, box, min_side=800, max_side=1333):
+    imgr = _resize(img, min_side=min_side, max_side=max_side)
 
     img_hw = tf.shape(img)[:2]
     imgr_hw = tf.shape(imgr)[:2]
 
-    h_ratio, w_ratio = tf.cast(imgr_hw / img_hw, tf.float32)
+    hw_ratios = tf.cast(imgr_hw / img_hw, tf.float32)
+    h_ratio = hw_ratios[0]
+    w_ratio = hw_ratios[1]
     boxr = box * tf.stack([h_ratio, w_ratio, h_ratio, w_ratio])
 
     return imgr, boxr
+
+
+def random_resize_min(img, box, min_sides, max_side=1333):
+    min_sides = tf.convert_to_tensor(min_sides)
+
+    rand_idx = tf.random.uniform([1], minval=0, maxval=tf.shape(min_sides)[0], dtype=tf.int32)[0]
+    min_side = min_sides[rand_idx]
+    return resize(img, box, min_side=min_side, max_side=max_side)
 
 
 def box_normalize_xyxy(boxes, img):
