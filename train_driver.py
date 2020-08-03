@@ -4,7 +4,8 @@ from chambers.augmentations import box_normalize_xyxy, random_resize_min
 from chambers.utils.boxes import box_xywh_to_xyxy
 from datasets import CocoDetection
 from models import build_detr_resnet50
-from utils import read_jpeg, normalize_image, denormalize_image, absolute2relative, plot_results, build_mask, remove_padding
+from utils import read_jpeg, normalize_image, denormalize_image, absolute2relative, plot_results, build_mask, \
+    remove_padding_box, remove_padding_image
 
 COCO_PATH = "/home/crr/datasets/coco"
 # COCO_PATH = "/home/ch/datasets/coco"
@@ -84,7 +85,7 @@ bbox_embeding.shape
 output_bbox = tf.sigmoid(bbox_embeding)
 
 outputs = {'pred_logits': output_classes[-1],
-          'pred_boxes': output_bbox[-1]}
+           'pred_boxes': output_bbox[-1]}
 
 # %%
 outputs = detr((x, mask), post_process=False)
@@ -98,7 +99,6 @@ outputs = detr((x, mask), post_process=True)
 # %% Show predictions
 v_idx = 1
 x_v = x[v_idx]
-mask_v = mask[v_idx]
 labels_v, scores, boxes_v = [outputs[k][v_idx].numpy() for k in ['labels', 'scores', 'boxes']]
 
 keep = scores > 0.7
@@ -106,7 +106,7 @@ labels_v = labels_v[keep]
 scores = scores[keep]
 boxes_v = boxes_v[keep]
 
-x_v = remove_padding(x_v, mask_v)
+x_v = remove_padding_image(x_v, -1)
 boxes_v = absolute2relative(boxes_v, (x_v.shape[1], x_v.shape[0])).numpy()
 
 x_v = denormalize_image(x_v)
