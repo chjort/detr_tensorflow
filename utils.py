@@ -31,6 +31,18 @@ def build_mask(image):
     return tf.zeros((h, w), dtype=tf.bool)
 
 
+def remove_padding(image, mask):
+    x = tf.ragged.boolean_mask(image, tf.logical_not(mask))
+
+    is_not_padding_row = tf.logical_not(tf.equal(x.nested_row_lengths(), 0))
+    height = tf.reduce_sum(tf.cast(is_not_padding_row, tf.int32))
+    width = x.bounding_shape()[1]
+    channels = x.bounding_shape()[2]
+
+    x = x.to_tensor(shape=(height, width, channels))
+    return x
+
+
 def cxcywh2xyxy(boxes):
     cx, cy, w, h = [boxes[..., i] for i in range(4)]
 
