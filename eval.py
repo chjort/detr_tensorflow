@@ -7,9 +7,9 @@ from pycocotools.cocoeval import COCOeval
 from tqdm import tqdm
 
 import models
-from chambers.utils.boxes import box_xyxy_to_xywh
+from chambers.utils.boxes import box_xyxy_to_xywh, absolute2relative
 from datasets import COCODatasetBBoxes
-from utils import preprocess_image, read_jpeg, absolute2relative
+from utils import preprocess_image, read_jpeg
 
 parser = argparse.ArgumentParser('DETR evalutaion script for the COCO dataset.')
 

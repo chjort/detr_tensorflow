@@ -227,3 +227,10 @@ def get(identifier):
         raise ValueError("Argument 'identifier' must be type string.")
 
     return f
+
+
+def absolute2relative(boxes, img_size):
+    width, height = img_size
+    scale = tf.constant([width, height, width, height], dtype=tf.float32)
+    boxes *= scale
+    return boxes

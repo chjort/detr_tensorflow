@@ -1,10 +1,11 @@
 import tensorflow as tf
 
 from chambers.augmentations import box_normalize_xyxy, random_resize_min
-from chambers.utils.boxes import box_xywh_to_xyxy
+from chambers.utils.boxes import box_xywh_to_xyxy, absolute2relative
+from chambers.utils.masking import remove_padding_image
 from datasets import CocoDetection
 from models import build_detr_resnet50
-from utils import read_jpeg, normalize_image, denormalize_image, absolute2relative, plot_results, remove_padding_image
+from utils import read_jpeg, normalize_image, denormalize_image, plot_results
 
 COCO_PATH = "/home/crr/datasets/coco"
 # COCO_PATH = "/home/ch/datasets/coco"

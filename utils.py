@@ -8,72 +8,6 @@ def read_jpeg(img_path):
     return image
 
 
-def resize(image, min_side=800, max_side=1333):
-    h = tf.cast(tf.shape(image)[0], tf.float32)
-    w = tf.cast(tf.shape(image)[1], tf.float32)
-    cur_min_side = tf.minimum(w, h)
-    cur_max_side = tf.maximum(w, h)
-
-    min_side = tf.cast(min_side, tf.float32)
-    max_side = tf.cast(max_side, tf.float32)
-    scale = tf.minimum(max_side / cur_max_side,
-                       min_side / cur_min_side)
-    nh = tf.cast(scale * h, tf.int32)
-    nw = tf.cast(scale * w, tf.int32)
-
-    image = tf.image.resize(image, (nh, nw))
-    return image
-
-
-def build_mask(image):
-    h = tf.shape(image)[0]
-    w = tf.shape(image)[1]
-    return tf.zeros((h, w), dtype=tf.bool)
-
-
-def apply_mask_image(image, mask):
-    """ Expects image shape [h, w, c] and mask shape [h, w] """
-    x = tf.ragged.boolean_mask(image, tf.logical_not(mask))
-
-    is_not_padding_row = tf.logical_not(tf.equal(x.nested_row_lengths(), 0))
-    height = tf.reduce_sum(tf.cast(is_not_padding_row, tf.int32))
-    width = x.bounding_shape()[1]
-    channels = x.bounding_shape()[2]
-
-    x = x.to_tensor(shape=(height, width, channels))
-    return x
-
-
-def apply_mask_box(box, mask):
-    """ Expects box shape [n_boxes, 4] and mask shape [n_boxes] """
-    x = tf.ragged.boolean_mask(box, tf.logical_not(mask))
-    return x
-
-
-def remove_padding_image(image, padding_value):
-    """ Expects image shape [h, w, c] """
-    mask = tf.reduce_all(tf.equal(image, padding_value), axis=-1)
-    return apply_mask_image(image, mask)
-
-
-def remove_padding_box(box, padding_value):
-    """ Expects box shape [n_boxes, 4] """
-    mask = tf.reduce_all(tf.equal(box, padding_value), axis=1)
-    return apply_mask_box(box, mask)
-
-
-def absolute2relative(boxes, img_size):
-    width, height = img_size
-    scale = tf.constant([width, height, width, height], dtype=tf.float32)
-    boxes *= scale
-    return boxes
-
-
-def xyxy2xywh(boxes):
-    xmin, ymin, xmax, ymax = [boxes[..., i] for i in range(4)]
-    return tf.stack([xmin, ymin, xmax - xmin, ymax - ymin], axis=-1)
-
-
 def normalize_image(image):
     image = tf.cast(image, dtype=tf.float32)
     channel_avg = tf.constant([0.485, 0.456, 0.406], dtype=tf.float32)
@@ -93,13 +27,6 @@ def denormalize_image(image):
     image = image * 255.0
     image = tf.cast(image, tf.uint8)
     return image
-
-
-def preprocess_image(image):
-    image = resize(image, min_side=800, max_side=1333)
-    image = normalize_image(image)
-
-    return image, build_mask(image)
 
 
 def plot_results(img, labels, probs, boxes):

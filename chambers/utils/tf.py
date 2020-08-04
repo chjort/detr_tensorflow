@@ -56,3 +56,18 @@ def round(x, decimals=0):
 # def tf_linear_sum_assignment(cost_matrix):
 #     assignment = tf.py_function(func=linear_sum_assignment, inp=[cost_matrix], Tout=[tf.int64, tf.int64])
 #     return assignment
+def resize(image, min_side=800, max_side=1333):
+    h = tf.cast(tf.shape(image)[0], tf.float32)
+    w = tf.cast(tf.shape(image)[1], tf.float32)
+    cur_min_side = tf.minimum(w, h)
+    cur_max_side = tf.maximum(w, h)
+
+    min_side = tf.cast(min_side, tf.float32)
+    max_side = tf.cast(max_side, tf.float32)
+    scale = tf.minimum(max_side / cur_max_side,
+                       min_side / cur_min_side)
+    nh = tf.cast(scale * h, tf.int32)
+    nw = tf.cast(scale * w, tf.int32)
+
+    image = tf.image.resize(image, (nh, nw))
+    return image

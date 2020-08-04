@@ -1,6 +1,6 @@
 import tensorflow as tf
 
-from utils import resize as _resize
+from chambers.utils.tf import resize as _resize
 
 
 def resize(img, box, min_side=800, max_side=1333):
