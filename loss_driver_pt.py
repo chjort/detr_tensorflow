@@ -33,8 +33,8 @@ with open("pred_pt.pickle", "rb") as f:
     pred["pred_boxes"] = tf.convert_to_tensor(pred["pred_boxes"])
     pred["aux_outputs"] = [{k: tf.convert_to_tensor(v) for k, v in aux_output.items()}
                            for aux_output in pred["aux_outputs"]]
-    class_out = pred["pred_logits"]
-    box_out = pred["pred_boxes"]
+    class_pred = pred["pred_logits"]
+    box_pred = pred["pred_boxes"]
 
 boxes = [target["boxes"] for target in targets]
 labels = [target["labels"] for target in targets]
@@ -48,9 +48,11 @@ labels2 = labels[1]
 labels = tf.stack([labels1, labels2], axis=0)
 
 # %%
-class_out.shape  # shape (batch_size, n_boxes, n_classes)
-box_out.shape  # shape (batch_size, n_boxes, 4), box coordinates (center_x, center_y, w, h)
-x.shape
+outputs = pred
+outputs["pred_logits"].shape  # shape (batch_size, n_boxes, n_classes)
+outputs["pred_boxes"].shape  # shape (batch_size, n_boxes, 4), box coordinates (center_x, center_y, w, h)
+samples.shape
+targets[0]
 
 # %% Matcher
 set_cost_class = 1
@@ -63,14 +65,14 @@ set_cost_giou = 2
 # y_true = tf.expand_dims(targets[1]["boxes"], 0)
 
 # stacking batches
-batch_size, n_box, n_class = class_out.shape
-box_shape = box_out.shape[-1]
+batch_size, n_box, n_class = outputs["pred_logits"].shape
+box_shape = outputs["pred_boxes"].shape[-1]
 
-y_pred_logits = tf.reshape(class_out, [-1, n_class])  # out_bbox
+y_pred_logits = tf.reshape(outputs["pred_logits"], [-1, n_class])  # out_bbox
 y_pred_logits = tf.nn.softmax(y_pred_logits, axis=-1)
 y_true_logits = tf.concat([target["labels"] for target in targets], axis=0)  # tgt_pred
 
-y_pred_box = tf.reshape(box_out, [-1, box_shape])  # out_bbox
+y_pred_box = tf.reshape(outputs["pred_boxes"], [-1, box_shape])  # out_bbox
 y_true_box = tf.concat([target["boxes"] for target in targets], axis=0)  # tgt_pred
 
 # bbox cost
@@ -129,10 +131,10 @@ pred_labels = tf.tensor_scatter_nd_update(pred_labels, prediction_idx, target_la
 # get boxes of predicted indices
 target_boxes = tf.concat([tf.gather(target["boxes"], tgt_idx) for target, (prd_idx, tgt_idx) in zip(targets, indices)],
                          axis=0)
-pred_boxes = tf.gather_nd(box_out, prediction_idx)
+pred_boxes = tf.gather_nd(outputs["pred_boxes"], prediction_idx)
 
 # %% Weighted Cross-entropy
-y_pred = class_out
+y_pred = outputs["pred_logits"]
 y_true = tf.one_hot(pred_labels, depth=n_class)
 
 real_class_weight = 1
