@@ -4,8 +4,7 @@ from chambers.augmentations import box_normalize_xyxy, random_resize_min
 from chambers.utils.boxes import box_xywh_to_xyxy
 from datasets import CocoDetection
 from models import build_detr_resnet50
-from utils import read_jpeg, normalize_image, denormalize_image, absolute2relative, plot_results, build_mask, \
-    remove_padding_image
+from utils import read_jpeg, normalize_image, denormalize_image, absolute2relative, plot_results, remove_padding_image
 
 COCO_PATH = "/home/crr/datasets/coco"
 # COCO_PATH = "/home/ch/datasets/coco"
@@ -41,18 +40,14 @@ dataset = tf.data.Dataset.from_generator(lambda: coco_data, (tf.string, tf.float
 dataset = dataset.map(lambda img_path, boxes, labels: (read_jpeg(img_path), box_xywh_to_xyxy(boxes), labels))
 dataset = dataset.map(augment)
 dataset = dataset.map(normalize)
-dataset = dataset.map(lambda x, boxes, labels: (x, build_mask(x), boxes, labels))
 dataset = dataset.padded_batch(batch_size=BATCH_SIZE,
-                               # padded_shapes=((None, None, 3), (None, 4), (None,)),
-                               padded_shapes=((None, None, 3), (None, None), (None, 4), (None,)),
-                               padding_values=(
-                                   tf.constant(-1.), tf.constant(True), tf.constant(-1.), tf.constant(-1)))
+                               padded_shapes=((None, None, 3), (None, 4), (None,)),
+                               padding_values=(tf.constant(-1.), tf.constant(-1.), tf.constant(-1)))
 
 it = iter(dataset)
 
 # %%
-# x, boxes, labels = next(it)
-x, mask, boxes, labels = next(it)
+x, boxes, labels = next(it)
 print("X SHAPE:", x.shape)
 print("BOXES SHAPE:", boxes.shape)
 
@@ -62,33 +57,19 @@ detr.build()
 detr.load_from_pickle('checkpoints/detr-r50-e632da11.pickle')
 
 # %%
-hs = detr.transformer(x, mask, detr.query_embed, pos_encoding)[0]
-hs.shape
-
-output_classes = detr.class_embed(hs)
-output_classes.shape
-
-bbox_embeding = detr.bbox_embed(hs)
-bbox_embeding.shape
-
-output_bbox = tf.sigmoid(bbox_embeding)
-
-outputs = {'pred_logits': output_classes[-1],
-           'pred_boxes': output_bbox[-1]}
+class_pred, box_pred = detr(x)
+print("PRED LOGITS:", class_pred.shape)
+print("PRED BOXES:", box_pred.shape)
 
 # %%
-outputs = detr(x, post_process=False)
-
-print("PRED LOGITS:", outputs["pred_logits"].shape)
-print("PRED BOXES:", outputs["pred_boxes"].shape)
-
-# %%
-outputs = detr(x, post_process=True)
+scores, boxes_v, labels_v = detr.post_process(class_pred, box_pred)
 
 # %% Show predictions
 v_idx = 0
 x_v = x[v_idx]
-labels_v, scores, boxes_v = [outputs[k][v_idx].numpy() for k in ['labels', 'scores', 'boxes']]
+labels_v = labels_v[v_idx].numpy()
+scores = scores[v_idx].numpy()
+boxes_v = boxes_v[v_idx].numpy()
 
 keep = scores > 0.7
 labels_v = labels_v[keep]

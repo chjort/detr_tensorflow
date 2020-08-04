@@ -19,10 +19,13 @@ class PositionEmbeddingSine(tf.keras.Model):
         self.eps = eps
 
     def call(self, inputs, **kwargs):
-        # TODO: Can does this really need the mask or can it use x iteself?
-        mask = tf.cast(inputs._keras_mask, tf.float32)
-        y_embed = tf.math.cumsum(mask, axis=1)
-        x_embed = tf.math.cumsum(mask, axis=2)
+        if inputs._keras_mask is not None:
+            ones = tf.cast(inputs._keras_mask, tf.float32)
+        else:
+            ones = tf.ones(tf.shape(inputs)[:-1], dtype=tf.float32)  # shape [batch_size, h, w]
+
+        y_embed = tf.math.cumsum(ones, axis=1)
+        x_embed = tf.math.cumsum(ones, axis=2)
 
         if self.normalize:
             y_embed = y_embed / (y_embed[:, -1:, :] + self.eps) * self.scale

@@ -1,18 +1,23 @@
 import tensorflow as tf
 
 
-def set_supports_masking(model, verbose=True, level=0):
+def set_supports_masking(model, verbose=True, **kwargs):
+    """
+        Sets the attribute 'supports_masking' to True for every layer in model.
+        Does this recursively if has nested models.
+    """
     model.supports_masking = True
     # TODO: Set default 'compute_mask(input, mask)' method of model here.
     #   See 'compute_mask' of keras.layers.Layer class versus 'compute_mask' of
     #   keras.models.Model class.
+    level = kwargs.get("level", 0)  # only used for printing
 
     for layer in model.layers:
-        if verbose:
+        if verbose and level is not None:
             print("".join(["\t"] * level), layer, flush=True)
         layer.supports_masking = True
         if issubclass(layer.__class__, tf.keras.Model):
-            set_supports_masking(layer, verbose, level + 1)
+            set_supports_masking(layer, verbose, level=level + 1)
 
 
 def pairwise_subtract(a, b):

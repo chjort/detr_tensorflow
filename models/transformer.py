@@ -38,7 +38,7 @@ class Transformer(tf.keras.Model):
         query_encoding = tf.expand_dims(query_encoding, axis=1)
         query_encoding = tf.tile(query_encoding, [1, batch_size, 1])
 
-        mask = tf.reshape(mask, [batch_size, -1])
+        mask = tf.reshape(mask, [batch_size, -1])  # shape [batch_size, h*w]
 
         target = tf.zeros_like(query_encoding)
 
@@ -322,7 +322,7 @@ class MultiHeadAttention(tf.keras.layers.Layer):
 
         if key_padding_mask is not None:
             # NOTE: Mask padding
-            #   key_padding_mask shape: [batch_size, h*w]
+            #   key_padding_mask shape: [batch_size, h, w]
             attn_output_weights = tf.reshape(attn_output_weights,
                                 [batch_size, self.num_heads, target_len, source_len])
 

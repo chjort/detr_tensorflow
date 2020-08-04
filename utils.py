@@ -62,16 +62,6 @@ def remove_padding_box(box, padding_value):
     return apply_mask_box(box, mask)
 
 
-def cxcywh2xyxy(boxes):
-    cx, cy, w, h = [boxes[..., i] for i in range(4)]
-
-    xmin, ymin = cx - w * 0.5, cy - h * 0.5
-    xmax, ymax = cx + w * 0.5, cy + h * 0.5
-
-    boxes = tf.stack([xmin, ymin, xmax, ymax], axis=-1)
-    return boxes
-
-
 def absolute2relative(boxes, img_size):
     width, height = img_size
     scale = tf.constant([width, height, width, height], dtype=tf.float32)

@@ -3,8 +3,9 @@ import pickle
 import tensorflow as tf
 from tensorflow.keras.layers import Conv2D, ReLU
 
+from chambers.layers import DownsampleMasking
+from chambers.utils.boxes import box_cxcywh_to_xyxy
 from chambers.utils.tf import set_supports_masking
-from utils import cxcywh2xyxy
 from .backbone import ResNet50Backbone
 from .custom_layers import Linear
 from .position_embeddings import PositionEmbeddingSine
@@ -23,6 +24,7 @@ class DETR(tf.keras.Model):
 
         self.mask_layer = tf.keras.layers.Masking(mask_value=mask_value)
         self.backbone = backbone or ResNet50Backbone(name='backbone/0/body')
+        self.downsample_mask = DownsampleMasking()
         self.transformer = transformer or Transformer(return_intermediate_dec=True,
                                                       name='transformer')
         self.model_dim = self.transformer.model_dim
@@ -45,45 +47,43 @@ class DETR(tf.keras.Model):
             ReLU(),
             Linear(4, name='layers/2')
         ], name='bbox_embed')
-        set_supports_masking(self)
+
+        # Make every layer propagate the mask unchanged by default
+        set_supports_masking(self, verbose=False)
 
     def call(self, inputs, training=False, post_process=False):
-        x = self.mask_layer(inputs)
-        x = self.backbone(x, training=training)
-        pos_encoding = self.pos_encoder(x)
+        # inputs shape [batch_size, img_h, img_w, c]
+        x = self.mask_layer(inputs)  # [batch_size, img_h, img_w, c]
+        x = self.backbone(x, training=training)  # [batch_size, h, w, 2048]
+        x = self.downsample_mask(x)  # [batch_size, h, w, 2048]
+        pos_encoding = self.pos_encoder(x)  # [batch_size, h, w, model_dim]
 
-        x = self.input_proj(x)
+        x = self.input_proj(x)  # [batch_size, h, w, model_dim]
         hs = self.transformer(x, tf.logical_not(x._keras_mask),
                               self.query_embed,
                               pos_encoding, training=training)[0]
+        # [n_decoder_layers, batch_size, num_queries, model_dim]
 
-        outputs_class = self.class_embed(hs)
-        outputs_coord = tf.sigmoid(self.bbox_embed(hs))
+        class_pred = self.class_embed(hs)  # [n_decoder_layers, batch_size, num_queries, num_classes]
+        box_pred = tf.sigmoid(self.bbox_embed(hs))  # [n_decoder_layers, batch_size, num_queries, 4]
 
-        output = {'pred_logits': outputs_class[-1],
-                  'pred_boxes': outputs_coord[-1]}
+        # get predictions from last decoder layer
+        class_pred = class_pred[-1]
+        box_pred = box_pred[-1]
 
-        if post_process:
-            output = self.post_process(output)
-        return output
+        return class_pred, box_pred
 
     def build(self, input_shape=None, **kwargs):
         if input_shape is None:
             input_shape = (None, None, None, 3)
         super().build(input_shape, **kwargs)
 
-    def post_process(self, output):
-        logits, boxes = [output[k] for k in ['pred_logits', 'pred_boxes']]
-
+    def post_process(self, logits, boxes):
         probs = tf.nn.softmax(logits, axis=-1)[..., :-1]
         scores = tf.reduce_max(probs, axis=-1)
         labels = tf.argmax(probs, axis=-1)
-        boxes = cxcywh2xyxy(boxes)
-
-        output = {'scores': scores,
-                  'labels': labels,
-                  'boxes': boxes}
-        return output
+        boxes = box_cxcywh_to_xyxy(boxes)
+        return scores, boxes, labels
 
     def load_from_pickle(self, pickle_file, verbose=False):
         with open(pickle_file, 'rb') as f:
