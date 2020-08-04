@@ -1,12 +1,14 @@
 import pickle
+
 import tensorflow as tf
 from tensorflow.keras.layers import Conv2D, ReLU
 
+from chambers.utils.tf import set_supports_masking
+from utils import cxcywh2xyxy
 from .backbone import ResNet50Backbone
 from .custom_layers import Linear
 from .position_embeddings import PositionEmbeddingSine
 from .transformer import Transformer
-from utils import cxcywh2xyxy
 
 
 class DETR(tf.keras.Model):
@@ -43,15 +45,16 @@ class DETR(tf.keras.Model):
             ReLU(),
             Linear(4, name='layers/2')
         ], name='bbox_embed')
+        set_supports_masking(self)
 
-
-    def call(self, inp, training=False, post_process=False):
-        x, masks = inp
+    def call(self, inputs, training=False, post_process=False):
+        x = self.mask_layer(inputs)
         x = self.backbone(x, training=training)
-        masks = self.downsample_masks(masks, x)
-        pos_encoding = self.pos_encoder(masks)
+        pos_encoding = self.pos_encoder(x)
 
-        hs = self.transformer(self.input_proj(x), masks, self.query_embed,
+        x = self.input_proj(x)
+        hs = self.transformer(x, tf.logical_not(x._keras_mask),
+                              self.query_embed,
                               pos_encoding, training=training)[0]
 
         outputs_class = self.class_embed(hs)
@@ -64,29 +67,14 @@ class DETR(tf.keras.Model):
             output = self.post_process(output)
         return output
 
-
     def build(self, input_shape=None, **kwargs):
         if input_shape is None:
-            input_shape = [(None, None, None, 3), (None, None, None)]
+            input_shape = (None, None, None, 3)
         super().build(input_shape, **kwargs)
-
-
-    def downsample_masks(self, masks, x):
-        masks = tf.cast(masks, tf.int32)
-        masks = tf.expand_dims(masks, -1)
-        # The existing tf.image.resize with method='nearest'
-        # does not expose the half_pixel_centers option in TF 2.2.0
-        # The original Pytorch F.interpolate uses it like this
-        masks = tf.compat.v1.image.resize_nearest_neighbor(
-            masks, tf.shape(x)[1:3], align_corners=False, half_pixel_centers=False)
-        masks = tf.squeeze(masks, -1)
-        masks = tf.cast(masks, tf.bool)
-        return masks
-
 
     def post_process(self, output):
         logits, boxes = [output[k] for k in ['pred_logits', 'pred_boxes']]
-        
+
         probs = tf.nn.softmax(logits, axis=-1)[..., :-1]
         scores = tf.reduce_max(probs, axis=-1)
         labels = tf.argmax(probs, axis=-1)
@@ -105,4 +93,3 @@ class DETR(tf.keras.Model):
             if verbose:
                 print('Loading', var.name)
             var = var.assign(detr_weights[var.name[:-2]])
-

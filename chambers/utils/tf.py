@@ -1,15 +1,18 @@
 import tensorflow as tf
 
 
-def set_supports_masking(model, level=0):
+def set_supports_masking(model, verbose=True, level=0):
     model.supports_masking = True
     # TODO: Set default 'compute_mask(input, mask)' method of model here.
+    #   See 'compute_mask' of keras.layers.Layer class versus 'compute_mask' of
+    #   keras.models.Model class.
 
     for layer in model.layers:
-        print("".join(["\t"] * level), layer, flush=True)
+        if verbose:
+            print("".join(["\t"] * level), layer, flush=True)
         layer.supports_masking = True
         if issubclass(layer.__class__, tf.keras.Model):
-            set_supports_masking(layer, level + 1)
+            set_supports_masking(layer, verbose, level + 1)
 
 
 def pairwise_subtract(a, b):

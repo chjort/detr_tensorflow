@@ -2,7 +2,8 @@ import tensorflow as tf
 from tensorflow.keras.layers import ZeroPadding2D, Conv2D, ReLU, MaxPool2D
 
 from .custom_layers import FrozenBatchNorm2D
-
+from chambers.layers import DownsampleMasking
+from chambers.utils.tf import set_supports_masking
 
 class ResNetBase(tf.keras.Model):
     def __init__(self, **kwargs):
@@ -15,6 +16,7 @@ class ResNetBase(tf.keras.Model):
         self.relu = ReLU(name='relu')
         self.pad2 = ZeroPadding2D(1, name='pad2')
         self.maxpool = MaxPool2D(pool_size=3, strides=2, padding='valid')
+        self.downsample_mask = DownsampleMasking()
 
     def call(self, x, **kwargs):
         x = self.pad1(x)
@@ -28,6 +30,7 @@ class ResNetBase(tf.keras.Model):
         x = self.layer2(x)
         x = self.layer3(x)
         x = self.layer4(x)
+        x = self.downsample_mask(x)
         return x
 
 

@@ -2,7 +2,6 @@ import tensorflow as tf
 
 from chambers.augmentations import box_normalize_xyxy, random_resize_min
 from chambers.utils.boxes import box_xywh_to_xyxy
-from chambers.utils.tf import set_supports_masking
 from datasets import CocoDetection
 from models import build_detr_resnet50
 from utils import read_jpeg, normalize_image, denormalize_image, absolute2relative, plot_results, build_mask, \
@@ -58,48 +57,12 @@ print("X SHAPE:", x.shape)
 print("BOXES SHAPE:", boxes.shape)
 
 # %%
-detr = build_detr_resnet50()
+detr = build_detr_resnet50(mask_value=-1.)
 detr.build()
 detr.load_from_pickle('checkpoints/detr-r50-e632da11.pickle')
 
 # %%
-mask_layer = tf.keras.layers.Masking(mask_value=-1.)
-x = mask_layer(x)
-
-
-# TODO: Figure out how to change mask in layers
-class DownsampleMask(tf.keras.layers.Layer):
-    """Split the input tensor into 2 tensors along the time dimension."""
-
-    def call(self, inputs):
-        # Expect the input to be 3D and mask to be 2D, split the input tensor into 2
-        # subtensors along the time axis (axis 1).
-        return inputs
-
-    def compute_mask(self, inputs, mask=None):
-        # Also split the mask into 2 if it presents.
-        return tf.constant([True, False])
-
-
-DownsampleMask()(x)._keras_mask
-# TODO: END TODO
-
-
-set_supports_masking(detr.backbone)
-xf = detr.backbone(x)
-xf._keras_mask
-
-maskf = detr.downsample_masks(mask, xf)
-xf.shape
-maskf.shape
-
-pos_encoding = detr.pos_encoder(maskf)
-pos_encoding.shape
-
-xfp = detr.input_proj(xf)
-xfp.shape
-
-hs = detr.transformer(xfp, maskf, detr.query_embed, pos_encoding)[0]
+hs = detr.transformer(x, mask, detr.query_embed, pos_encoding)[0]
 hs.shape
 
 output_classes = detr.class_embed(hs)
@@ -114,16 +77,16 @@ outputs = {'pred_logits': output_classes[-1],
            'pred_boxes': output_bbox[-1]}
 
 # %%
-outputs = detr((x, mask), post_process=False)
+outputs = detr(x, post_process=False)
 
 print("PRED LOGITS:", outputs["pred_logits"].shape)
 print("PRED BOXES:", outputs["pred_boxes"].shape)
 
 # %%
-outputs = detr((x, mask), post_process=True)
+outputs = detr(x, post_process=True)
 
 # %% Show predictions
-v_idx = 1
+v_idx = 0
 x_v = x[v_idx]
 labels_v, scores, boxes_v = [outputs[k][v_idx].numpy() for k in ['labels', 'scores', 'boxes']]
 
