@@ -1,6 +1,17 @@
 import tensorflow as tf
 
 
+def set_supports_masking(model, level=0):
+    model.supports_masking = True
+    # TODO: Set default 'compute_mask(input, mask)' method of model here.
+
+    for layer in model.layers:
+        print("".join(["\t"] * level), layer, flush=True)
+        layer.supports_masking = True
+        if issubclass(layer.__class__, tf.keras.Model):
+            set_supports_masking(layer, level + 1)
+
+
 def pairwise_subtract(a, b):
     tf.debugging.assert_rank(b, tf.rank(a), "Tensor 'b' must have same rank as tensor 'a'")
 

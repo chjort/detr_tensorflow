@@ -321,6 +321,8 @@ class MultiHeadAttention(tf.keras.layers.Layer):
             attn_output_weights += attn_mask
 
         if key_padding_mask is not None:
+            # NOTE: Mask padding
+            #   key_padding_mask shape: [batch_size, h*w]
             attn_output_weights = tf.reshape(attn_output_weights,
                                 [batch_size, self.num_heads, target_len, source_len])
 
@@ -328,12 +330,14 @@ class MultiHeadAttention(tf.keras.layers.Layer):
             key_padding_mask = tf.expand_dims(key_padding_mask, 2)
             key_padding_mask = tf.tile(key_padding_mask, [1, self.num_heads, target_len, 1])
 
+            # NOTE: Attention weights for padded elements are set to -inf
             attn_output_weights = tf.where(key_padding_mask,
                                            tf.zeros_like(attn_output_weights) + float('-inf'),
                                            attn_output_weights)
             attn_output_weights = tf.reshape(attn_output_weights,
                                 [batch_size * self.num_heads, target_len, source_len])
 
+        # NOTE: Softmax output for masked weights (-inf) will be absolute 0.
         attn_output_weights = tf.nn.softmax(attn_output_weights, axis=-1)
         attn_output_weights = self.dropout(attn_output_weights, training=training)
 

@@ -16,8 +16,7 @@ class ResNetBase(tf.keras.Model):
         self.pad2 = ZeroPadding2D(1, name='pad2')
         self.maxpool = MaxPool2D(pool_size=3, strides=2, padding='valid')
 
-
-    def call(self, x):
+    def call(self, x, **kwargs):
         x = self.pad1(x)
         x = self.conv1(x)
         x = self.bn1(x)
@@ -37,7 +36,7 @@ class ResNet50Backbone(ResNetBase):
         super().__init__(**kwargs)
 
         self.layer1 = ResidualBlock(num_bottlenecks=3, dim1=64, dim2=256, strides=1,
-                                   replace_stride_with_dilation=False, name='layer1')
+                                    replace_stride_with_dilation=False, name='layer1')
         self.layer2 = ResidualBlock(num_bottlenecks=4, dim1=128, dim2=512, strides=2,
                                     replace_stride_with_dilation=replace_stride_with_dilation[0],
                                     name='layer2')
@@ -66,7 +65,7 @@ class ResNet101Backbone(ResNetBase):
                                     name='layer4')
 
 
-class ResidualBlock(tf.keras.Model):
+class ResidualBlock(tf.keras.layers.Layer):
     def __init__(self, num_bottlenecks, dim1, dim2, strides=1,
                  replace_stride_with_dilation=False, **kwargs):
         super().__init__(**kwargs)
@@ -84,27 +83,26 @@ class ResidualBlock(tf.keras.Model):
             self.bottlenecks.append(BottleNeck(dim1, dim2, name=str(idx),
                                                dilation=dilation))
 
-
-    def call(self, x):
+    def call(self, x, **kwargs):
         for btn in self.bottlenecks:
             x = btn(x)
         return x
 
 
-class BottleNeck(tf.keras.Model):
+class BottleNeck(tf.keras.layers.Layer):
     def __init__(self, dim1, dim2, strides=1, dilation=1, downsample=False, **kwargs):
         super().__init__(**kwargs)
         self.downsample = downsample
         self.pad = ZeroPadding2D(dilation)
         self.relu = ReLU(name='relu')
-        
+
         self.conv1 = Conv2D(dim1, kernel_size=1, use_bias=False, name='conv1')
         self.bn1 = FrozenBatchNorm2D(name='bn1')
 
         self.conv2 = Conv2D(dim1, kernel_size=3, strides=strides, dilation_rate=dilation,
                             use_bias=False, name='conv2')
         self.bn2 = FrozenBatchNorm2D(name='bn2')
-        
+
         self.conv3 = Conv2D(dim2, kernel_size=1, use_bias=False, name='conv3')
         self.bn3 = FrozenBatchNorm2D(name='bn3')
 
@@ -116,8 +114,7 @@ class BottleNeck(tf.keras.Model):
         else:
             self.downsample = None
 
-
-    def call(self, x):
+    def call(self, x, **kwargs):
         identity = x
 
         out = self.conv1(x)

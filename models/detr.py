@@ -11,6 +11,7 @@ from utils import cxcywh2xyxy
 
 class DETR(tf.keras.Model):
     def __init__(self, num_classes=91, num_queries=100,
+                 mask_value=-1.,
                  backbone=None,
                  pos_encoder=None,
                  transformer=None,
@@ -18,6 +19,7 @@ class DETR(tf.keras.Model):
         super().__init__(**kwargs)
         self.num_queries = num_queries
 
+        self.mask_layer = tf.keras.layers.Masking(mask_value=mask_value)
         self.backbone = backbone or ResNet50Backbone(name='backbone/0/body')
         self.transformer = transformer or Transformer(return_intermediate_dec=True,
                                                       name='transformer')
