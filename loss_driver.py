@@ -99,8 +99,52 @@ indices = [linear_sum_assignment(C_split[i][i]) for i in range(len(C_split))]
 # TODO: Investigate getting the final losses directly from C using the LSA indices, instead of getting bounding boxes
 # from LSA indices and then computing loss.
 
-#%%
+# %%
 # TODO: Get cost matrices in pure tensorflow?
+C.shape
+
+c = tf.reshape(tf.range(60), [2, 6, 5])
+"""
+(2, 6, 5)
+[[[ 0,  1,  2,  3,  4],
+  [ 5,  6,  7,  8,  9],
+  [10, 11, 12, 13, 14],
+  [15, 16, 17, 18, 19],
+  [20, 21, 22, 23, 24],
+  [25, 26, 27, 28, 29]],
+ [[30, 31, 32, 33, 34],
+  [35, 36, 37, 38, 39],
+  [40, 41, 42, 43, 44],
+  [45, 46, 47, 48, 49],
+  [50, 51, 52, 53, 54],
+  [55, 56, 57, 58, 59]]]
+
+to
+
+(2, 6, None)
+[
+    [[ 0,  1],
+     [ 5,  6],
+     [10, 11],
+     [15, 16],
+     [20, 21],
+     [25, 26]],
+ 
+    [[32, 33, 34],
+     [37, 38, 39],
+     [42, 43, 44],
+     [47, 48, 49],
+     [52, 53, 54],
+     [57, 58, 59]]]
+]
+
+
+"""
+flat_c = tf.reshape(c, [-1])
+flat_c
+# TODO: Maybe mask?
+
+#%%
 C_splitnp = [split.numpy() for split in C_split]
 cost_matrices = tf.ragged.constant(C_splitnp)
 
