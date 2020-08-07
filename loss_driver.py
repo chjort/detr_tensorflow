@@ -2,10 +2,11 @@ import pickle
 
 import numpy as np
 import tensorflow as tf
-from scipy.optimize import linear_sum_assignment
 
 from chambers.utils.boxes import box_cxcywh_to_xyxy, boxes_giou
+from chambers.utils.masking import remove_padding_box, remove_padding_1d
 from chambers.utils.tf import pairwise_l1
+from chambers.utils.tf import linear_sum_assignment, sizes_to_batch_indices, batch_linear_sum_assignment
 
 COCO_PATH = "/home/crr/datasets/coco"
 # COCO_PATH = "/home/ch/datasets/coco"
@@ -45,22 +46,20 @@ boxes = tf.stack([boxes1, boxes2], axis=0)
 
 labels1 = tf.pad(labels[0], paddings=[[0, 22]], constant_values=-1)
 labels2 = labels[1]
-labels = tf.stack([labels1, labels2], axis=0)
+labels = tf.cast(tf.stack([labels1, labels2], axis=0), tf.int32)
 
 # %%
+x.shape
+boxes.shape
+labels.shape
+
 class_out.shape  # shape (batch_size, n_boxes, n_classes)
 box_out.shape  # shape (batch_size, n_boxes, 4), box coordinates (center_x, center_y, w, h)
-x.shape
 
 # %% Matcher
 set_cost_class = 1
 set_cost_bbox = 5
 set_cost_giou = 2
-
-# including batch dimension (original output shape)
-# single example
-# y_pred = outputs["pred_boxes"][1:2]
-# y_true = tf.expand_dims(targets[1]["boxes"], 0)
 
 # stacking batches
 batch_size, n_box, n_class = class_out.shape
@@ -68,10 +67,12 @@ box_shape = box_out.shape[-1]
 
 y_pred_logits = tf.reshape(class_out, [-1, n_class])  # out_bbox
 y_pred_logits = tf.nn.softmax(y_pred_logits, axis=-1)
-y_true_logits = tf.concat([target["labels"] for target in targets], axis=0)  # tgt_pred
+y_true_logits = tf.reshape(labels, [-1])  # tgt_pred
+y_true_logits = remove_padding_1d(y_true_logits, -1)
 
 y_pred_box = tf.reshape(box_out, [-1, box_shape])  # out_bbox
-y_true_box = tf.concat([target["boxes"] for target in targets], axis=0)  # tgt_pred
+y_true_box = tf.reshape(boxes, [-1, tf.shape(boxes)[-1]])
+y_true_box = remove_padding_box(y_true_box, -1.)
 
 # bbox cost
 cost_bbox = pairwise_l1(y_pred_box, y_true_box)
@@ -88,47 +89,38 @@ cost_giou = -boxes_giou(y_pred_box, y_true_box)
 C = set_cost_bbox * cost_bbox + set_cost_class * cost_class + set_cost_giou * cost_giou
 C = tf.reshape(C, [batch_size, n_box, -1])
 
-sizes = [len(v["boxes"]) for v in targets]
+# TODO: Prettify this
+sizes = tf.reduce_sum(tf.cast(tf.reduce_all(tf.not_equal(boxes, -1.), -1), tf.int32), axis=1)
+
 C_split = tf.split(C, sizes, -1)
 
-indices = [linear_sum_assignment(c[i]) for i, c in enumerate(C_split)]
-indices = [(tf.convert_to_tensor(i, dtype=tf.int32), tf.convert_to_tensor(j, dtype=tf.int32)) for i, j in indices]
+indices = [linear_sum_assignment(C_split[i][i]) for i in range(len(C_split))]
 
 # TODO: Investigate getting the final losses directly from C using the LSA indices, instead of getting bounding boxes
 # from LSA indices and then computing loss.
 
-# %%
-y_pred_box.shape
-y_true_box.shape
+#%%
+# TODO: Get cost matrices in pure tensorflow?
+C_splitnp = [split.numpy() for split in C_split]
+cost_matrices = tf.ragged.constant(C_splitnp)
 
-C.shape
-C_split[0].shape
-C_split[1].shape
-[c[i].shape for i, c in enumerate(C_split)]
+lsa = batch_linear_sum_assignment(cost_matrices)
+row_idx = sizes_to_batch_indices(sizes)
+row_idx = tf.tile(tf.expand_dims(row_idx, -1), [1, 2])
+indcs = tf.stack([row_idx, lsa], axis=0)
 
-cb0 = C_split[0][0]
-cb1 = C_split[1][1]
-
-cb0.shape
-cb1.shape
-linear_sum_assignment(cb0)
-linear_sum_assignment(cb1)
+prediction_idx = tf.transpose(indcs[:, :, 0])
+target_idx = tf.transpose(indcs[:, :, 1])
 
 # %% # Get box assignments
-row_idx = tf.concat([tf.fill(q_idx.shape, i) for i, (q_idx, k_idx) in enumerate(indices)], axis=0)
-col_idx = tf.concat([q_idx for (q_idx, k_idx) in indices], axis=0)
-prediction_idx = tf.stack([row_idx, col_idx], axis=1)
+target_labels = tf.gather_nd(labels, target_idx)
 
 # get labels of predicted indices
-target_labels = [tf.gather(target["labels"], tgt_idx) for target, (prd_idx, tgt_idx) in zip(targets, indices)]
-target_labels = tf.concat(target_labels, axis=0)
-target_labels = tf.cast(target_labels, tf.int32)
 pred_labels = tf.fill([batch_size, n_box], n_class - 1)
 pred_labels = tf.tensor_scatter_nd_update(pred_labels, prediction_idx, target_labels)
 
 # get boxes of predicted indices
-target_boxes = tf.concat([tf.gather(target["boxes"], tgt_idx) for target, (prd_idx, tgt_idx) in zip(targets, indices)],
-                         axis=0)
+target_boxes = tf.gather_nd(boxes, target_idx)
 pred_boxes = tf.gather_nd(box_out, prediction_idx)
 
 # %% Weighted Cross-entropy
@@ -147,14 +139,14 @@ weights = tf.reduce_sum(weights, axis=-1)
 loss_ce = tf.keras.losses.categorical_crossentropy(y_true, y_pred, from_logits=True)
 loss_ce = loss_ce * weights
 loss_ce = tf.reduce_sum(loss_ce) / tf.reduce_sum(weights)  # 0.49932474
+print(loss_ce)
 
 # %% Box losses
-pred_boxes.shape
-target_boxes.shape
 
 # L1 loss
 n_boxes = tf.cast(tf.shape(target_boxes)[0], tf.float32)
 loss_l1_box = tf.reduce_sum(tf.abs(target_boxes - pred_boxes)) / n_boxes  # 0.034271143
+print(loss_l1_box)
 
 # GIoU loss
 target_boxes = box_cxcywh_to_xyxy(target_boxes)
@@ -162,3 +154,4 @@ pred_boxes = box_cxcywh_to_xyxy(pred_boxes)
 giou = boxes_giou(pred_boxes, target_boxes)
 giou = tf.linalg.diag_part(giou)
 loss_giou_box = tf.reduce_mean(1 - giou)  # 0.37486637
+print(loss_giou_box)

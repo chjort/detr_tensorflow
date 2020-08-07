@@ -1,4 +1,5 @@
 import tensorflow as tf
+from scipy.optimize import linear_sum_assignment as sp_lsa
 
 
 def set_supports_masking(model, verbose=True, **kwargs):
@@ -52,10 +53,7 @@ def round(x, decimals=0):
     rounded = tf.round(x * mult) / mult
     return rounded
 
-# @tf.function
-# def tf_linear_sum_assignment(cost_matrix):
-#     assignment = tf.py_function(func=linear_sum_assignment, inp=[cost_matrix], Tout=[tf.int64, tf.int64])
-#     return assignment
+
 def resize(image, min_side=800, max_side=1333):
     h = tf.cast(tf.shape(image)[0], tf.float32)
     w = tf.cast(tf.shape(image)[1], tf.float32)
@@ -71,3 +69,33 @@ def resize(image, min_side=800, max_side=1333):
 
     image = tf.image.resize(image, (nh, nw))
     return image
+
+
+@tf.function(input_signature=[tf.TensorSpec(shape=[None, None], dtype=tf.float32)])
+def linear_sum_assignment(cost_matrix):
+    assignment = tf.py_function(func=sp_lsa, inp=[cost_matrix], Tout=[tf.int32, tf.int32])
+    assignment = tf.stack(assignment, axis=1)
+    return assignment
+
+
+@tf.function(input_signature=[tf.RaggedTensorSpec(shape=[None, None, None, None], dtype=tf.float32)])
+def batch_linear_sum_assignment(cost_matrices):
+    batch_size = cost_matrices.bounding_shape()[0]
+
+    cost_matrix = cost_matrices[0][0].to_tensor()
+    lsa = linear_sum_assignment(cost_matrix)
+    for i in tf.range(1, batch_size):
+        cost_matrix = cost_matrices[i][i].to_tensor()
+        lsa_i = linear_sum_assignment(cost_matrix)
+        lsa = tf.concat([lsa, lsa_i], axis=0)
+
+    return lsa
+
+
+@tf.function(input_signature=[tf.TensorSpec(shape=None, dtype=tf.int32)])
+def sizes_to_batch_indices(sizes):
+    batch_size = tf.shape(sizes)[0]
+    arr = tf.repeat(0, sizes[0])
+    for i in tf.range(1, batch_size):
+        arr = tf.concat([arr, tf.repeat(i, sizes[i])], axis=0)
+    return arr

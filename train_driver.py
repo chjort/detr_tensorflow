@@ -51,6 +51,7 @@ it = iter(dataset)
 x, boxes, labels = next(it)
 print("X SHAPE:", x.shape)
 print("BOXES SHAPE:", boxes.shape)
+print("LABELS SHAPE:", labels.shape)
 
 # %%
 detr = build_detr_resnet50(mask_value=-1.)

@@ -20,6 +20,11 @@ def apply_mask_box(box, mask):
     return x
 
 
+def remove_padding_1d(x, padding_value):
+    logit_mask = tf.not_equal(x, padding_value)
+    return tf.boolean_mask(x, logit_mask)
+
+
 def remove_padding_image(image, padding_value):
     """ Expects image shape [h, w, c] """
     mask = tf.reduce_all(tf.equal(image, padding_value), axis=-1)
