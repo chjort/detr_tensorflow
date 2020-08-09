@@ -78,7 +78,8 @@ class DETR(tf.keras.Model):
             class_pred = class_pred[-1]
             box_pred = box_pred[-1]
 
-        return class_pred, box_pred
+        # return class_pred, box_pred
+        return tf.concat([box_pred, class_pred], axis=-1)
 
     def build(self, input_shape=None, **kwargs):
         if input_shape is None:

@@ -24,10 +24,14 @@ class HungarianLoss(tf.keras.losses.Loss):
 
     @tf.function
     def call(self, y_true, y_pred):
-        y_true_logits = y_true[0]
-        y_true_boxes = y_true[1]
-        y_pred_logits = y_pred[0]
-        y_pred_boxes = y_pred[1]
+        y_true_boxes = y_true[:, :, :-1]
+        y_true_logits = y_true[:, :, -1]
+        y_pred_boxes = y_pred[:, :, :4]
+        y_pred_logits = y_pred[:, :, 4:]
+        # y_true_logits = y_true[0]
+        # y_true_boxes = y_true[1]
+        # y_pred_logits = y_pred[0]
+        # y_pred_boxes = y_pred[1]
 
         if self.sequence_input:
             tf.assert_rank(y_pred_boxes, 4, "Invalid input shape.")

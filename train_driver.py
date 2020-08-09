@@ -41,17 +41,24 @@ dataset = tf.data.Dataset.from_generator(lambda: coco_data, (tf.string, tf.float
 dataset = dataset.map(lambda img_path, boxes, labels: (read_jpeg(img_path), box_xywh_to_xyxy(boxes), tf.cast(labels, tf.float32)))
 dataset = dataset.map(augment)
 dataset = dataset.map(normalize)
+# dataset = dataset.map(lambda img, boxes, labels: (img, tf.concat([boxes, labels], axis=0)))
+dataset = dataset.map(lambda img, boxes, labels: (img, tf.concat([boxes, tf.expand_dims(labels, 1)], axis=1)))
+
 dataset = dataset.padded_batch(batch_size=BATCH_SIZE,
-                               padded_shapes=((None, None, 3), (None, 4), (None,)),
-                               padding_values=(tf.constant(-1.), tf.constant(-1.), tf.constant(-1.)))
+                               # padded_shapes=((None, None, 3), (None, 4), (None,)),
+                               # padding_values=(tf.constant(-1.), tf.constant(-1.), tf.constant(-1.))
+                               padded_shapes=((None, None, 3), (None, 5)),
+                               padding_values=(tf.constant(-1.), tf.constant(-1.))
+                               )
 
 it = iter(dataset)
 
 # %%
-x, y_true_boxes, y_true_logits = next(it)
+# x, y_true_boxes, y_true_logits = next(it)
+x, y = next(it)
 print("X SHAPE:", x.shape)
-print("BOXES SHAPE:", y_true_boxes.shape)
-print("LABELS SHAPE:", y_true_logits.shape)
+print("BOXES SHAPE:", y.shape)
+# print("LABELS SHAPE:", y_true_logits.shape)
 
 # %%
 detr = build_detr_resnet50(mask_value=-1., return_decode_sequence=False)
@@ -59,15 +66,15 @@ detr.build()
 detr.load_from_pickle('checkpoints/detr-r50-e632da11.pickle')
 
 # %%
-y_pred_logits, y_pred_boxes = detr(x)
-print("PRED LOGITS:", y_pred_logits.shape)
-print("PRED BOXES:", y_pred_boxes.shape)
+# y_pred_logits, y_pred_boxes = detr(x)
+y_pred = detr(x)
+# print("PRED LOGITS:", y_pred_logits.shape)
+print("PRED BOXES:", y_pred.shape)
 
-
-
-#%%
+# %%
 hungarian = HungarianLoss(mask_value=-1., sequence_input=False)
-loss = hungarian((y_true_logits, y_true_boxes), (y_pred_logits, y_pred_boxes))
+# loss = hungarian((y_true_logits, y_true_boxes), (y_pred_logits, y_pred_boxes))
+loss = hungarian(y, y_pred)
 print(loss)
 
 # %%
