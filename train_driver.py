@@ -6,19 +6,19 @@ from chambers.utils.masking import remove_padding_image
 from datasets import CocoDetection
 from models import build_detr_resnet50
 from utils import read_jpeg, normalize_image, denormalize_image, plot_results
+from chambers.losses import HungarianLoss
 
-COCO_PATH = "/home/crr/datasets/coco"
-# COCO_PATH = "/home/ch/datasets/coco"
-BATCH_SIZE = 2
+# COCO_PATH = "/home/crr/datasets/coco"
+COCO_PATH = "/home/ch/datasets/coco"
+BATCH_SIZE = 3
 
 
 # %%
 def augment(img, boxes, labels):
     # TODO: Random Horizontal Flip
 
-    # img, boxes = resize(img, boxes, 800.0, 1333.0)
-
     min_sides = [480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800]
+
     # TODO: Random choice (50%)
     img, boxes = random_resize_min(img, boxes, min_sides=min_sides, max_side=1333)
     # ,
@@ -38,33 +38,40 @@ def normalize(img, boxes, labels):
 
 coco_data = CocoDetection(COCO_PATH, partition='val2017')  # boxes [x0, y0, w, h]
 dataset = tf.data.Dataset.from_generator(lambda: coco_data, (tf.string, tf.float32, tf.int32))
-dataset = dataset.map(lambda img_path, boxes, labels: (read_jpeg(img_path), box_xywh_to_xyxy(boxes), labels))
+dataset = dataset.map(lambda img_path, boxes, labels: (read_jpeg(img_path), box_xywh_to_xyxy(boxes), tf.cast(labels, tf.float32)))
 dataset = dataset.map(augment)
 dataset = dataset.map(normalize)
 dataset = dataset.padded_batch(batch_size=BATCH_SIZE,
                                padded_shapes=((None, None, 3), (None, 4), (None,)),
-                               padding_values=(tf.constant(-1.), tf.constant(-1.), tf.constant(-1)))
+                               padding_values=(tf.constant(-1.), tf.constant(-1.), tf.constant(-1.)))
 
 it = iter(dataset)
 
 # %%
-x, boxes, labels = next(it)
+x, y_true_boxes, y_true_logits = next(it)
 print("X SHAPE:", x.shape)
-print("BOXES SHAPE:", boxes.shape)
-print("LABELS SHAPE:", labels.shape)
+print("BOXES SHAPE:", y_true_boxes.shape)
+print("LABELS SHAPE:", y_true_logits.shape)
 
 # %%
-detr = build_detr_resnet50(mask_value=-1.)
+detr = build_detr_resnet50(mask_value=-1., return_decode_sequence=False)
 detr.build()
 detr.load_from_pickle('checkpoints/detr-r50-e632da11.pickle')
 
 # %%
-class_pred, box_pred = detr(x)
-print("PRED LOGITS:", class_pred.shape)
-print("PRED BOXES:", box_pred.shape)
+y_pred_logits, y_pred_boxes = detr(x)
+print("PRED LOGITS:", y_pred_logits.shape)
+print("PRED BOXES:", y_pred_boxes.shape)
+
+
+
+#%%
+hungarian = HungarianLoss(mask_value=-1., sequence_input=False)
+loss = hungarian((y_true_logits, y_true_boxes), (y_pred_logits, y_pred_boxes))
+print(loss)
 
 # %%
-scores, boxes_v, labels_v = detr.post_process(class_pred, box_pred)
+scores, boxes_v, labels_v = detr.post_process(y_pred_logits, y_pred_boxes)
 
 # %% Show predictions
 v_idx = 0

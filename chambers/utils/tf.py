@@ -78,14 +78,14 @@ def linear_sum_assignment(cost_matrix):
     return assignment
 
 
-@tf.function(input_signature=[tf.RaggedTensorSpec(shape=[None, None, None, None], dtype=tf.float32)])
+@tf.function(input_signature=[tf.RaggedTensorSpec(shape=[None, None, None], dtype=tf.float32)])
 def batch_linear_sum_assignment(cost_matrices):
     batch_size = cost_matrices.bounding_shape()[0]
 
-    cost_matrix = cost_matrices[0][0].to_tensor()
+    cost_matrix = cost_matrices[0].to_tensor()
     lsa = linear_sum_assignment(cost_matrix)
     for i in tf.range(1, batch_size):
-        cost_matrix = cost_matrices[i][i].to_tensor()
+        cost_matrix = cost_matrices[i].to_tensor()
         lsa_i = linear_sum_assignment(cost_matrix)
         lsa = tf.concat([lsa, lsa_i], axis=0)
 
@@ -93,9 +93,18 @@ def batch_linear_sum_assignment(cost_matrices):
 
 
 @tf.function(input_signature=[tf.TensorSpec(shape=None, dtype=tf.int32)])
-def sizes_to_batch_indices(sizes):
-    batch_size = tf.shape(sizes)[0]
-    arr = tf.repeat(0, sizes[0])
+def repeat_indices(repeats):
+    """
+
+    Example:
+        >>> index_repeats = [1, 5, 2]
+        >>> indices = repeat_indices(index_repeats)
+        >>> indices
+        [0, 1, 1, 1, 1, 1, 2, 2]
+
+    """
+    batch_size = tf.shape(repeats)[0]
+    arr = tf.repeat(0, repeats[0])
     for i in tf.range(1, batch_size):
-        arr = tf.concat([arr, tf.repeat(i, sizes[i])], axis=0)
+        arr = tf.concat([arr, tf.repeat(i, repeats[i])], axis=0)
     return arr

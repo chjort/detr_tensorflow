@@ -3,13 +3,9 @@ import pickle
 import numpy as np
 import tensorflow as tf
 
-from chambers.utils.boxes import box_cxcywh_to_xyxy, boxes_giou
-from chambers.utils.masking import remove_padding_box, remove_padding_1d
-from chambers.utils.tf import pairwise_l1
-from chambers.utils.tf import linear_sum_assignment, sizes_to_batch_indices, batch_linear_sum_assignment
+from chambers.losses import HungarianLoss
+from chambers.utils.tf import batch_linear_sum_assignment
 
-COCO_PATH = "/home/crr/datasets/coco"
-# COCO_PATH = "/home/ch/datasets/coco"
 BATCH_SIZE = 2
 
 # %%
@@ -37,6 +33,10 @@ with open("pred_pt.pickle", "rb") as f:
     class_out = pred["pred_logits"]
     box_out = pred["pred_boxes"]
 
+# class_out = tf.transpose(tf.stack([*[aux["pred_logits"] for aux in pred["aux_outputs"]], class_out], axis=0),
+#                          [1, 0, 2, 3])
+# box_out = tf.transpose(tf.stack([*[aux["pred_boxes"] for aux in pred["aux_outputs"]], box_out], axis=0), [1, 0, 2, 3])
+
 boxes = [target["boxes"] for target in targets]
 labels = [target["labels"] for target in targets]
 
@@ -46,156 +46,56 @@ boxes = tf.stack([boxes1, boxes2], axis=0)
 
 labels1 = tf.pad(labels[0], paddings=[[0, 22]], constant_values=-1)
 labels2 = labels[1]
-labels = tf.cast(tf.stack([labels1, labels2], axis=0), tf.int32)
+labels = tf.cast(tf.stack([labels1, labels2], axis=0), tf.float32)
 
 # %%
-x.shape
-boxes.shape
-labels.shape
-
-class_out.shape  # shape (batch_size, n_boxes, n_classes)
-box_out.shape  # shape (batch_size, n_boxes, 4), box coordinates (center_x, center_y, w, h)
-
-# %% Matcher
-set_cost_class = 1
-set_cost_bbox = 5
-set_cost_giou = 2
-
-# stacking batches
-batch_size, n_box, n_class = class_out.shape
-box_shape = box_out.shape[-1]
-
-y_pred_logits = tf.reshape(class_out, [-1, n_class])  # out_bbox
-y_pred_logits = tf.nn.softmax(y_pred_logits, axis=-1)
-y_true_logits = tf.reshape(labels, [-1])  # tgt_pred
-y_true_logits = remove_padding_1d(y_true_logits, -1)
-
-y_pred_box = tf.reshape(box_out, [-1, box_shape])  # out_bbox
-y_true_box = tf.reshape(boxes, [-1, tf.shape(boxes)[-1]])
-y_true_box = remove_padding_box(y_true_box, -1.)
-
-# bbox cost
-cost_bbox = pairwise_l1(y_pred_box, y_true_box)
-
-# logits cost
-cost_class = -tf.gather(y_pred_logits, y_true_logits, axis=1)
-
-# giou cost
-y_true_box = box_cxcywh_to_xyxy(y_true_box)
-y_pred_box = box_cxcywh_to_xyxy(y_pred_box)
-cost_giou = -boxes_giou(y_pred_box, y_true_box)
-
-# Weighted cost matrix
-C = set_cost_bbox * cost_bbox + set_cost_class * cost_class + set_cost_giou * cost_giou
-C = tf.reshape(C, [batch_size, n_box, -1])
-
-# TODO: Prettify this
-sizes = tf.reduce_sum(tf.cast(tf.reduce_all(tf.not_equal(boxes, -1.), -1), tf.int32), axis=1)
-
-C_split = tf.split(C, sizes, -1)
-
-indices = [linear_sum_assignment(C_split[i][i]) for i in range(len(C_split))]
-
-# TODO: Investigate getting the final losses directly from C using the LSA indices, instead of getting bounding boxes
-# from LSA indices and then computing loss.
+# seq_len = tf.shape(class_out)[1]
+# labels = tf.repeat(labels, seq_len, axis=0)  # TODO: Maybe expect shape of input ground truth
+# boxes = tf.repeat(boxes, seq_len, axis=0)  # [batch_size, seq_len, n_pred_boxes, 4]
+# class_out = tf.reshape(class_out, [-1, tf.shape(class_out)[2], tf.shape(class_out)[3]])
+# box_out = tf.reshape(box_out, [-1, tf.shape(box_out)[2], tf.shape(box_out)[3]])
 
 # %%
-# TODO: Get cost matrices in pure tensorflow?
-C.shape
+hungarian = HungarianLoss(mask_value=-1., sequence_input=False)
+loss = hungarian((labels, boxes), (class_out, box_out))
+print(loss)  # no seq 1.4204, seq 8.8313
 
-c = tf.reshape(tf.range(60), [2, 6, 5])
-"""
-(2, 6, 5)
-[[[ 0,  1,  2,  3,  4],
-  [ 5,  6,  7,  8,  9],
-  [10, 11, 12, 13, 14],
-  [15, 16, 17, 18, 19],
-  [20, 21, 22, 23, 24],
-  [25, 26, 27, 28, 29]],
- [[30, 31, 32, 33, 34],
-  [35, 36, 37, 38, 39],
-  [40, 41, 42, 43, 44],
-  [45, 46, 47, 48, 49],
-  [50, 51, 52, 53, 54],
-  [55, 56, 57, 58, 59]]]
+# %%
+# Before LSA
+y_true_logits = labels  # Ground truth labels   # [batch_size, 24]                          # [2, 24]
+y_true_boxes = boxes  # Ground truth boxes    # [batch_size, 24, 4]                       # [2, 24, 4]
+y_pred_logits = class_out  # Predicted logits      # [batch_size, n_pred_boxes, n_classes]     # [2, 100, 92]
+y_pred_boxes = box_out  # Predicted boxes       # [batch_size, n_pred_boxes, 4]             # [2, 100, 4]
+print(y_true_logits.shape)
+print(y_true_boxes.shape)
+print(y_pred_logits.shape)
+print(y_pred_boxes.shape)
 
-to
+batch_size = tf.shape(y_pred_logits)[0]
+n_pred_boxes = tf.shape(y_pred_logits)[1]
+n_class = tf.shape(y_pred_logits)[2]
+batch_mask = hungarian._get_batch_mask(y_true_boxes)
+cost_matrix = hungarian._compute_cost_matrix(y_true_logits, y_true_boxes, y_pred_logits, y_pred_boxes, batch_mask)
+cost_matrix.bounding_shape()
+lsa = batch_linear_sum_assignment(cost_matrix)
+prediction_indices, target_indices = hungarian._lsa_to_gather_indices(lsa, batch_mask)
+# get assigned targets
+y_true_logits_lsa = tf.gather_nd(y_true_logits, target_indices)
+y_true_boxes_lsa = tf.gather_nd(y_true_boxes, target_indices)
+no_class_labels = tf.cast(tf.fill([batch_size, n_pred_boxes], n_class - 1), tf.float32)
+y_true_logits_lsa = tf.tensor_scatter_nd_update(no_class_labels, prediction_indices, y_true_logits_lsa)
+# get assigned predictions
+y_pred_boxes_lsa = tf.gather_nd(y_pred_boxes, prediction_indices)
 
-(2, 6, None)
-[
-    [[ 0,  1],
-     [ 5,  6],
-     [10, 11],
-     [15, 16],
-     [20, 21],
-     [25, 26]],
- 
-    [[32, 33, 34],
-     [37, 38, 39],
-     [42, 43, 44],
-     [47, 48, 49],
-     [52, 53, 54],
-     [57, 58, 59]]]
-]
+# After LSA
+print(y_true_logits_lsa.shape)
+print(y_true_boxes_lsa.shape)
+print(y_pred_logits.shape)
+print(y_pred_boxes_lsa.shape)
 
+# Training losses
+loss_ce = hungarian.weighted_cross_entropy_loss(y_true_logits_lsa, y_pred_logits) * hungarian.class_loss_weight
+loss_l1 = hungarian.l1_loss(y_true_boxes_lsa, y_pred_boxes_lsa) * hungarian.bbox_loss_weight
+loss_giou = hungarian.giou_loss(y_true_boxes_lsa, y_pred_boxes_lsa) * hungarian.giou_loss_weight
 
-"""
-flat_c = tf.reshape(c, [-1])
-flat_c
-# TODO: Maybe mask?
-
-#%%
-C_splitnp = [split.numpy() for split in C_split]
-cost_matrices = tf.ragged.constant(C_splitnp)
-
-lsa = batch_linear_sum_assignment(cost_matrices)
-row_idx = sizes_to_batch_indices(sizes)
-row_idx = tf.tile(tf.expand_dims(row_idx, -1), [1, 2])
-indcs = tf.stack([row_idx, lsa], axis=0)
-
-prediction_idx = tf.transpose(indcs[:, :, 0])
-target_idx = tf.transpose(indcs[:, :, 1])
-
-# %% # Get box assignments
-target_labels = tf.gather_nd(labels, target_idx)
-
-# get labels of predicted indices
-pred_labels = tf.fill([batch_size, n_box], n_class - 1)
-pred_labels = tf.tensor_scatter_nd_update(pred_labels, prediction_idx, target_labels)
-
-# get boxes of predicted indices
-target_boxes = tf.gather_nd(boxes, target_idx)
-pred_boxes = tf.gather_nd(box_out, prediction_idx)
-
-# %% Weighted Cross-entropy
-y_pred = class_out
-y_true = tf.one_hot(pred_labels, depth=n_class)
-
-real_class_weight = 1
-non_class_weight = 0.1
-class_weights = tf.concat([tf.repeat(tf.constant(real_class_weight, dtype=tf.float32), n_class - 1),
-                           tf.constant([non_class_weight], dtype=tf.float32)],
-                          axis=0)
-
-weights = class_weights * y_true
-weights = tf.reduce_sum(weights, axis=-1)
-
-loss_ce = tf.keras.losses.categorical_crossentropy(y_true, y_pred, from_logits=True)
-loss_ce = loss_ce * weights
-loss_ce = tf.reduce_sum(loss_ce) / tf.reduce_sum(weights)  # 0.49932474
-print(loss_ce)
-
-# %% Box losses
-
-# L1 loss
-n_boxes = tf.cast(tf.shape(target_boxes)[0], tf.float32)
-loss_l1_box = tf.reduce_sum(tf.abs(target_boxes - pred_boxes)) / n_boxes  # 0.034271143
-print(loss_l1_box)
-
-# GIoU loss
-target_boxes = box_cxcywh_to_xyxy(target_boxes)
-pred_boxes = box_cxcywh_to_xyxy(pred_boxes)
-giou = boxes_giou(pred_boxes, target_boxes)
-giou = tf.linalg.diag_part(giou)
-loss_giou_box = tf.reduce_mean(1 - giou)  # 0.37486637
-print(loss_giou_box)
+loss_ce + loss_l1 + loss_giou

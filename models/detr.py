@@ -18,6 +18,7 @@ class DETR(tf.keras.Model):
                  backbone=None,
                  pos_encoder=None,
                  transformer=None,
+                 return_decode_sequence=False,
                  **kwargs):
         super().__init__(**kwargs)
         self.num_queries = num_queries
@@ -48,6 +49,8 @@ class DETR(tf.keras.Model):
             Linear(4, name='layers/2')
         ], name='bbox_embed')
 
+        self.return_decode_sequence = return_decode_sequence
+
         # Make every layer propagate the mask unchanged by default
         set_supports_masking(self, verbose=False)
 
@@ -68,8 +71,12 @@ class DETR(tf.keras.Model):
         box_pred = tf.sigmoid(self.bbox_embed(hs))  # [n_decoder_layers, batch_size, num_queries, 4]
 
         # get predictions from last decoder layer
-        class_pred = class_pred[-1]
-        box_pred = box_pred[-1]
+        if self.return_decode_sequence:
+            class_pred = tf.transpose(class_pred, [1, 0, 2, 3])
+            box_pred = tf.transpose(box_pred, [1, 0, 2, 3])
+        else:
+            class_pred = class_pred[-1]
+            box_pred = box_pred[-1]
 
         return class_pred, box_pred
 
