@@ -24,11 +24,11 @@ class HungarianLoss(tf.keras.losses.Loss):
 
     @tf.function
     def call(self, y_true, y_pred):
-        y_true_boxes = y_true[:, :, :-1]
-        y_true_logits = y_true[:, :, -1]
-        y_pred_boxes = y_pred[:, :, :4]
-        y_pred_logits = y_pred[:, :, 4:]
-        # y_true_logits = y_true[0]
+        y_true_boxes = y_true[..., :-1]
+        y_true_labels = y_true[..., -1]
+        y_pred_boxes = y_pred[..., :4]
+        y_pred_logits = y_pred[..., 4:]
+        # y_true_labels = y_true[0]
         # y_true_boxes = y_true[1]
         # y_pred_logits = y_pred[0]
         # y_pred_boxes = y_pred[1]
@@ -42,19 +42,19 @@ class HungarianLoss(tf.keras.losses.Loss):
             for i in tf.range(seq_len):
                 y_pred_logits_i = y_pred_logits[:, i, :, :]
                 y_pred_boxes_i = y_pred_boxes[:, i, :, :]
-                loss_i = self._compute_loss(y_true_logits, y_true_boxes, y_pred_logits_i, y_pred_boxes_i)
+                loss_i = self._compute_loss(y_true_labels, y_true_boxes, y_pred_logits_i, y_pred_boxes_i)
                 loss = loss + loss_i
         else:
-            loss = self._compute_loss(y_true_logits, y_true_boxes, y_pred_logits, y_pred_boxes)
+            loss = self._compute_loss(y_true_labels, y_true_boxes, y_pred_logits, y_pred_boxes)
 
         return loss
 
-    def _compute_loss(self, y_true_logits, y_true_boxes, y_pred_logits, y_pred_boxes):
+    def _compute_loss(self, y_true_labels, y_true_boxes, y_pred_logits, y_pred_boxes):
         """
 
 
-        :param y_true_logits: [batch_size, n_true_boxes]
-        :type y_true_logits:
+        :param y_true_labels: [batch_size, n_true_boxes]
+        :type y_true_labels:
         :param y_true_boxes: [batch_size, n_true_boxes, 4]
         :type y_true_boxes:
         :param y_pred_logits: [batch_size, n_pred_boxes, n_classes]
@@ -70,7 +70,7 @@ class HungarianLoss(tf.keras.losses.Loss):
         batch_mask = self._get_batch_mask(y_true_boxes)  # [batch_size, max_n_true_boxes_batch]
 
         # cost_matrix (RaggedTensor) [batch_size, n_pred_boxes, None]
-        cost_matrix = self._compute_cost_matrix(y_true_logits, y_true_boxes, y_pred_logits, y_pred_boxes, batch_mask)
+        cost_matrix = self._compute_cost_matrix(y_true_labels, y_true_boxes, y_pred_logits, y_pred_boxes, batch_mask)
 
         lsa = batch_linear_sum_assignment(cost_matrix)  # [n_true_boxes, 2]
 
@@ -79,15 +79,15 @@ class HungarianLoss(tf.keras.losses.Loss):
 
         # get assigned targets
         y_true_boxes_lsa = tf.gather_nd(y_true_boxes, target_indices)  # [n_true_boxes, 4]
-        y_true_logits_lsa = tf.gather_nd(y_true_logits, target_indices)
+        y_true_labels_lsa = tf.gather_nd(y_true_labels, target_indices)
         no_class_labels = tf.cast(tf.fill([batch_size, n_pred_boxes], n_class - 1), tf.float32)
-        y_true_logits_lsa = tf.tensor_scatter_nd_update(no_class_labels, prediction_indices,
-                                                        y_true_logits_lsa)  # [batch_size, n_pred_boxes]
+        y_true_labels_lsa = tf.tensor_scatter_nd_update(no_class_labels, prediction_indices,
+                                                        y_true_labels_lsa)  # [batch_size, n_pred_boxes]
 
         # get assigned predictions
         y_pred_boxes_lsa = tf.gather_nd(y_pred_boxes, prediction_indices)  # [n_true_boxes, 4]
 
-        loss_ce = self.weighted_cross_entropy_loss(y_true_logits_lsa, y_pred_logits) * self.class_loss_weight
+        loss_ce = self.weighted_cross_entropy_loss(y_true_labels_lsa, y_pred_logits) * self.class_loss_weight
         loss_l1 = self.l1_loss(y_true_boxes_lsa, y_pred_boxes_lsa) * self.bbox_loss_weight
         loss_giou = self.giou_loss(y_true_boxes_lsa, y_pred_boxes_lsa) * self.giou_loss_weight
 
@@ -142,8 +142,8 @@ class HungarianLoss(tf.keras.losses.Loss):
 
         # logits cost
         # TODO: tf.gather does not take indices that are out of bounds when using CPU? Works on Azure VM with GPU.
-        y_true_logits = tf.where(tf.equal(y_true, self.mask_value), tf.zeros_like(y_true), y_true)
-        cost_class = -tf.gather(y_pred, tf.cast(y_true_logits, tf.int32), axis=1)
+        y_true = tf.where(tf.equal(y_true, self.mask_value), tf.zeros_like(y_true), y_true)
+        cost_class = -tf.gather(y_pred, tf.cast(y_true, tf.int32), axis=1)
         return cost_class
 
     def _compute_box_l1_cost(self, y_true, y_pred):

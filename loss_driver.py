@@ -48,6 +48,12 @@ labels1 = tf.pad(labels[0], paddings=[[0, 22]], constant_values=-1)
 labels2 = labels[1]
 labels = tf.cast(tf.stack([labels1, labels2], axis=0), tf.float32)
 
+y_true = tf.concat([boxes, tf.expand_dims(labels, -1)], axis=-1)
+y_pred = tf.concat([box_out, class_out], axis=-1)
+
+y_true.shape
+y_pred.shape
+
 # %%
 # seq_len = tf.shape(class_out)[1]
 # labels = tf.repeat(labels, seq_len, axis=0)  # TODO: Maybe expect shape of input ground truth
@@ -57,7 +63,8 @@ labels = tf.cast(tf.stack([labels1, labels2], axis=0), tf.float32)
 
 # %%
 hungarian = HungarianLoss(mask_value=-1., sequence_input=False)
-loss = hungarian((labels, boxes), (class_out, box_out))
+loss = hungarian(y_true, y_pred)
+# loss = hungarian((labels, boxes), (class_out, box_out))
 print(loss)  # no seq 1.4204, seq 8.8313
 
 # %%
