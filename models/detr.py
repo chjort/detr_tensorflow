@@ -86,7 +86,10 @@ class DETR(tf.keras.Model):
             input_shape = (None, None, None, 3)
         super().build(input_shape, **kwargs)
 
-    def post_process(self, logits, boxes):
+    def post_process(self, y_pred):
+        boxes = y_pred[..., :4]
+        logits = y_pred[..., 4:]
+
         probs = tf.nn.softmax(logits, axis=-1)[..., :-1]
         scores = tf.reduce_max(probs, axis=-1)
         labels = tf.argmax(probs, axis=-1)

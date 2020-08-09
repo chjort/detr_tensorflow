@@ -1,22 +1,32 @@
 import tensorflow as tf
 
 from chambers.augmentations import box_normalize_xyxy, random_resize_min
+from chambers.losses import HungarianLoss
 from chambers.utils.boxes import box_xywh_to_xyxy, absolute2relative
 from chambers.utils.masking import remove_padding_image
 from datasets import CocoDetection
 from models import build_detr_resnet50
 from utils import read_jpeg, normalize_image, denormalize_image, plot_results
-from chambers.losses import HungarianLoss
 
-# COCO_PATH = "/home/crr/datasets/coco"
-COCO_PATH = "/home/ch/datasets/coco"
-BATCH_SIZE = 3
+
+def loss_placeholder(y_true, y_pred):
+    y_true_labels = y_true[..., -1]  # [1]
+    y_pred_logits = y_pred[..., 4:]  # [1]
+    y_pred = y_pred_logits[:, :1, :]
+    y_true = tf.one_hot(tf.cast(y_true_labels, tf.int32), depth=92)[:, :1, :]
+    return tf.keras.losses.categorical_crossentropy(y_true, y_pred, from_logits=True)
+
+
+COCO_PATH = "/home/crr/datasets/coco"
+# COCO_PATH = "/home/ch/datasets/coco"
+BATCH_SIZE = 2
 
 
 # %%
 def augment(img, boxes, labels):
     # TODO: Random Horizontal Flip
 
+    # min_sides = [544]
     min_sides = [480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800]
 
     # TODO: Random choice (50%)
@@ -36,8 +46,9 @@ def normalize(img, boxes, labels):
     return img, boxes, labels
 
 
-coco_data = CocoDetection(COCO_PATH, partition='val2017')  # boxes [x0, y0, w, h]
-dataset = tf.data.Dataset.from_generator(lambda: coco_data, (tf.string, tf.float32, tf.int32))
+coco_data = CocoDetection(COCO_PATH, partition='train2017')  # boxes [x0, y0, w, h]
+dataset = tf.data.Dataset.from_generator(lambda: coco_data, output_types=(tf.string, tf.float32, tf.int32))
+# dataset = dataset.repeat()
 dataset = dataset.map(lambda img_path, boxes, labels: (read_jpeg(img_path), box_xywh_to_xyxy(boxes), tf.cast(labels, tf.float32)))
 dataset = dataset.map(augment)
 dataset = dataset.map(normalize)
@@ -51,7 +62,52 @@ dataset = dataset.padded_batch(batch_size=BATCH_SIZE,
                                padding_values=(tf.constant(-1.), tf.constant(-1.))
                                )
 
+N = len(coco_data)
+
+#%%
+for i, (x, y) in dataset.take(22).enumerate():
+    print(i, x.shape, y.shape)
+    # TODO: Fix sample 21. It breaks the 'padded_batch' for some reason.
+
+
+
+# %%
+decode_sequence = False
+detr = build_detr_resnet50(mask_value=-1., return_decode_sequence=decode_sequence)
+detr.build()
+detr.load_from_pickle('checkpoints/detr-r50-e632da11.pickle')
+
+hungarian = HungarianLoss(mask_value=-1., sequence_input=decode_sequence)
+
+# %% COMPILE
+detr.compile("adam",
+             loss=hungarian,
+             # loss=loss_placeholder
+             )
+
+# %% TRAIN
+# detr + loss_placeholder: 1s per step
+# detr + hungarian: 1s per step
+
+detr.fit(dataset,
+         epochs=1,
+         # steps_per_epoch=N
+         )
+
+# %%
 it = iter(dataset)
+
+# import time
+# st = time.time()
+# for x, y in dataset.take(10):
+#     y_pred = detr(x)
+#     loss = hungarian(y, y_pred)
+#     print(loss)
+# print(time.time() - st)
+
+# eager: 59.922558307647705
+# graph: 64.54768967628479 (excessive retracing)
+# graph: 61.242064237594604
 
 # %%
 # x, y_true_boxes, y_true_logits = next(it)
@@ -61,24 +117,18 @@ print("BOXES SHAPE:", y.shape)
 # print("LABELS SHAPE:", y_true_logits.shape)
 
 # %%
-detr = build_detr_resnet50(mask_value=-1., return_decode_sequence=False)
-detr.build()
-detr.load_from_pickle('checkpoints/detr-r50-e632da11.pickle')
-
-# %%
 # y_pred_logits, y_pred_boxes = detr(x)
 y_pred = detr(x)
 # print("PRED LOGITS:", y_pred_logits.shape)
 print("PRED BOXES:", y_pred.shape)
 
 # %%
-hungarian = HungarianLoss(mask_value=-1., sequence_input=False)
 # loss = hungarian((y_true_logits, y_true_boxes), (y_pred_logits, y_pred_boxes))
 loss = hungarian(y, y_pred)
 print(loss)
 
 # %%
-scores, boxes_v, labels_v = detr.post_process(y_pred_logits, y_pred_boxes)
+scores, boxes_v, labels_v = detr.post_process(y_pred)
 
 # %% Show predictions
 v_idx = 0

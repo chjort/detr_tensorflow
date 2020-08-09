@@ -20,18 +20,22 @@ class HungarianLoss(tf.keras.losses.Loss):
         self.class_loss_weight = 1
         self.bbox_loss_weight = 5
         self.giou_loss_weight = 2
+
+        if sequence_input:
+            self.input_signature = [tf.TensorSpec(shape=(None, None, 5), dtype=tf.float32),
+                                    tf.TensorSpec(shape=(None, None, None, None), dtype=tf.float32)]
+        else:
+            self.input_signature = [tf.TensorSpec(shape=(None, None, 5), dtype=tf.float32),
+                                    tf.TensorSpec(shape=(None, None, None), dtype=tf.float32)]
+        self.call = tf.function(self.call, input_signature=self.input_signature)
+
         super().__init__(reduction=tf.keras.losses.Reduction.NONE, name=name)
 
-    @tf.function
     def call(self, y_true, y_pred):
-        y_true_boxes = y_true[..., :-1]
-        y_true_labels = y_true[..., -1]
-        y_pred_boxes = y_pred[..., :4]
-        y_pred_logits = y_pred[..., 4:]
-        # y_true_labels = y_true[0]
-        # y_true_boxes = y_true[1]
-        # y_pred_logits = y_pred[0]
-        # y_pred_boxes = y_pred[1]
+        y_true_boxes = y_true[..., :-1]  # [0]
+        y_true_labels = y_true[..., -1]  # [1]
+        y_pred_boxes = y_pred[..., :4]   # [0]
+        y_pred_logits = y_pred[..., 4:]  # [1]
 
         if self.sequence_input:
             tf.assert_rank(y_pred_boxes, 4, "Invalid input shape.")

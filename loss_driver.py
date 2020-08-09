@@ -90,7 +90,13 @@ prediction_indices, target_indices = hungarian._lsa_to_gather_indices(lsa, batch
 y_true_logits_lsa = tf.gather_nd(y_true_logits, target_indices)
 y_true_boxes_lsa = tf.gather_nd(y_true_boxes, target_indices)
 no_class_labels = tf.cast(tf.fill([batch_size, n_pred_boxes], n_class - 1), tf.float32)
+
+no_class_labels.shape # [2, 100]
+prediction_indices.shape # [26, 2]
+y_true_logits_lsa.shape # [26]
 y_true_logits_lsa = tf.tensor_scatter_nd_update(no_class_labels, prediction_indices, y_true_logits_lsa)
+
+
 # get assigned predictions
 y_pred_boxes_lsa = tf.gather_nd(y_pred_boxes, prediction_indices)
 
