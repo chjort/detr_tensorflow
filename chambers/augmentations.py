@@ -12,7 +12,8 @@ def resize(img, box, min_side=800, max_side=1333):
     hw_ratios = tf.cast(imgr_hw / img_hw, tf.float32)
     h_ratio = hw_ratios[0]
     w_ratio = hw_ratios[1]
-    boxr = box * tf.stack([h_ratio, w_ratio, h_ratio, w_ratio])
+    # boxr = box * tf.stack([h_ratio, w_ratio, h_ratio, w_ratio])
+    boxr = box * tf.stack([w_ratio, h_ratio, w_ratio, h_ratio])
 
     return imgr, boxr
 

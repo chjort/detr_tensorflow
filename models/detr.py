@@ -72,13 +72,12 @@ class DETR(tf.keras.Model):
 
         # get predictions from last decoder layer
         if self.return_decode_sequence:
-            class_pred = tf.transpose(class_pred, [1, 0, 2, 3])
-            box_pred = tf.transpose(box_pred, [1, 0, 2, 3])
+            class_pred = tf.transpose(class_pred, [1, 0, 2, 3])  # [batch_size, n_decoder_layers, num_queries, num_classes]
+            box_pred = tf.transpose(box_pred, [1, 0, 2, 3])  # [batch_size, n_decoder_layers, num_queries, 4]
         else:
-            class_pred = class_pred[-1]
-            box_pred = box_pred[-1]
+            class_pred = class_pred[-1]  # [batch_size, num_queries, num_classes]
+            box_pred = box_pred[-1]  # [batch_size, num_queries, 4]
 
-        # return class_pred, box_pred
         return tf.concat([box_pred, class_pred], axis=-1)
 
     def build(self, input_shape=None, **kwargs):

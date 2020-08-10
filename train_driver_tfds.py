@@ -1,12 +1,12 @@
 import tensorflow as tf
+import tensorflow_datasets as tfds
 
-from chambers.augmentations import box_normalize_xyxy, random_resize_min
+from chambers.augmentations import box_normalize_xyxy, random_resize_min, box_normalize_cxcywh
 from chambers.losses import HungarianLoss
-from chambers.utils.boxes import box_xywh_to_xyxy, absolute2relative
+from chambers.utils.boxes import absolute2relative, box_yxyx_to_xyxy, box_yxyx_to_cxcywh
 from chambers.utils.masking import remove_padding_image
-from datasets import CocoDetection
 from models import build_detr_resnet50
-from utils import read_jpeg, normalize_image, denormalize_image, plot_results
+from utils import normalize_image, denormalize_image, plot_results
 
 
 def loss_placeholder(y_true, y_pred):
@@ -17,9 +17,16 @@ def loss_placeholder(y_true, y_pred):
     return tf.keras.losses.categorical_crossentropy(y_true, y_pred, from_logits=True)
 
 
-# COCO_PATH = "/home/crr/datasets/coco"
-COCO_PATH = "/home/ch/datasets/coco"
 BATCH_SIZE = 2
+
+# %%
+split = "train"
+dataset, info = tfds.load("coco/2017",
+                          split=split,
+                          data_dir="/datadrive/crr/tensorflow_datasets",
+                          with_info=True)
+
+print(info.features)  # bbox format: [y_min, x_min, y_max, x_max]
 
 
 # %%
@@ -42,31 +49,29 @@ def augment(img, boxes, labels):
 
 def normalize(img, boxes, labels):
     img = normalize_image(img)
-    boxes = box_normalize_xyxy(boxes, img)
+    boxes = box_yxyx_to_cxcywh(boxes)  # TODO: Double check this is correct
+    # boxes = box_normalize_xyxy(boxes, img)
+    boxes = box_normalize_cxcywh(boxes, img)
     return img, boxes, labels
 
 
-coco_data = CocoDetection(COCO_PATH, partition='train2017')  # boxes [x0, y0, w, h]
-dataset = tf.data.Dataset.from_generator(lambda: coco_data, output_types=(tf.string, tf.float32, tf.int32))
-# dataset = dataset.repeat()
-dataset = dataset.map(lambda img_path, boxes, labels: (read_jpeg(img_path), box_xywh_to_xyxy(boxes), tf.cast(labels, tf.float32)))
+dataset = dataset.filter(lambda x: tf.shape(x["objects"]["label"])[0] > 0)  # remove elements with no annotations
+dataset = dataset.map(lambda x: (x["image"], x["objects"]["bbox"], tf.cast(x["objects"]["label"], tf.float32)))
 dataset = dataset.map(augment)
 dataset = dataset.map(normalize)
 dataset = dataset.map(lambda img, boxes, labels: (img, tf.concat([boxes, tf.expand_dims(labels, 1)], axis=1)))
-
 dataset = dataset.padded_batch(batch_size=BATCH_SIZE,
-                               # padded_shapes=((None, None, 3), (None, 4), (None,)),
-                               # padding_values=(tf.constant(-1.), tf.constant(-1.), tf.constant(-1.))
                                padded_shapes=((None, None, 3), (None, 5)),
                                padding_values=(tf.constant(-1.), tf.constant(-1.))
                                )
 
-N = len(coco_data)
-
-#%%
-for i, (x, y) in dataset.take(1000).enumerate():
-    # print(i, x.shape, y.shape)
-    print(i)
+if split == "train":
+    n_samples_no_label = 1021
+elif split == "validation":
+    n_samples_no_label = 48
+else:
+    n_samples_no_label = 0
+N = info.splits[split].num_examples - n_samples_no_label
 
 # %%
 decode_sequence = False
@@ -88,7 +93,7 @@ detr.compile("adam",
 
 detr.fit(dataset,
          epochs=1,
-         # steps_per_epoch=N
+         steps_per_epoch=100
          )
 
 # %%

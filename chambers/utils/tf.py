@@ -55,8 +55,17 @@ def round(x, decimals=0):
 
 
 def resize(image, min_side=800, max_side=1333):
+    # if tf.equal(tf.rank(image), 3):
+    #     h = tf.cast(tf.shape(image)[0], tf.float32)
+    #     w = tf.cast(tf.shape(image)[1], tf.float32)
+    # elif tf.equal(tf.rank(image), 4):
+    #     h = tf.cast(tf.shape(image)[1], tf.float32)
+    #     w = tf.cast(tf.shape(image)[2], tf.float32)
+    # else:
+    #     raise ValueError("Image must have rank 3 or 4. Found rank {}".format(tf.rank(image)))
     h = tf.cast(tf.shape(image)[0], tf.float32)
     w = tf.cast(tf.shape(image)[1], tf.float32)
+
     cur_min_side = tf.minimum(w, h)
     cur_max_side = tf.maximum(w, h)
 

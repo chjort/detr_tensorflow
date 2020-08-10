@@ -54,14 +54,24 @@ class CocoDetection(tf.keras.utils.Sequence):
                                    'instances_%s.json' % partition))
         self.img_ids = sorted(self.coco.getImgIds())
 
+        if partition == "train2017":
+            self._n_samples_no_label = 1021
+        elif partition == "val2017":
+            self._n_samples_no_label = 43
+        else:
+            self._n_samples_no_label = 0
+
     def __len__(self):
-        return len(self.img_ids)
+        return len(self.img_ids) - self._n_samples_no_label
 
     def __getitem__(self, idx):
+        ann_ids = self.coco.getAnnIds(self.img_ids[idx])
+        if len(ann_ids) == 0:
+            return self.__getitem__(idx + 1)
+
         img_info = self.coco.loadImgs(self.img_ids[idx])[0]
         img_path = path.join(self.cocopath, self.partition, img_info['file_name'])
         # img_shape = (img_info["height"], img_info["width"])
-        ann_ids = self.coco.getAnnIds(self.img_ids[idx])
         boxes, labels = self.parse_annotations(ann_ids)
         return img_path, boxes, labels#, img_shape
 
