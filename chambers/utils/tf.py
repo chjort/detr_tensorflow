@@ -1,3 +1,4 @@
+import numpy as np
 import tensorflow as tf
 from scipy.optimize import linear_sum_assignment as sp_lsa
 
@@ -82,6 +83,10 @@ def resize(image, min_side=800, max_side=1333):
 
 @tf.function(input_signature=[tf.TensorSpec(shape=[None, None], dtype=tf.float32)])
 def linear_sum_assignment(cost_matrix):
+    nans = tf.math.is_nan(cost_matrix)
+    if tf.reduce_any(nans):
+        cost_matrix = tf.where(nans, tf.fill(tf.shape(cost_matrix), np.inf), cost_matrix)
+
     assignment = tf.py_function(func=sp_lsa, inp=[cost_matrix], Tout=[tf.int32, tf.int32])
     assignment = tf.stack(assignment, axis=1)
     return assignment

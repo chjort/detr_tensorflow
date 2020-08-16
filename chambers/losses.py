@@ -140,7 +140,8 @@ class HungarianLoss(tf.keras.losses.Loss):
 
         # labels
         y_pred = tf.reshape(y_pred, [-1, n_class])
-        y_pred = tf.nn.softmax(y_pred, axis=-1)
+        # y_pred = tf.nn.softmax(y_pred, axis=-1)
+        y_pred = tf.nn.log_softmax(y_pred, axis=-1)
 
         y_true = tf.reshape(y_true, [-1])
 
