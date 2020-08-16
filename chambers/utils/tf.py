@@ -81,13 +81,23 @@ def resize(image, min_side=800, max_side=1333):
     return image
 
 
+def linear_sum_assignment_scipy(cost_matrix):
+
+    try:
+        lsa = sp_lsa(cost_matrix)
+    except ValueError as e:
+        print(cost_matrix)
+        raise ValueError("{}: {}".format(str(e), cost_matrix))
+
+    return lsa
+
 @tf.function(input_signature=[tf.TensorSpec(shape=[None, None], dtype=tf.float32)])
 def linear_sum_assignment(cost_matrix):
     nans = tf.math.is_nan(cost_matrix)
     if tf.reduce_any(nans):
         cost_matrix = tf.where(nans, tf.fill(tf.shape(cost_matrix), np.inf), cost_matrix)
 
-    assignment = tf.py_function(func=sp_lsa, inp=[cost_matrix], Tout=[tf.int32, tf.int32])
+    assignment = tf.py_function(func=linear_sum_assignment_scipy, inp=[cost_matrix], Tout=[tf.int32, tf.int32])
     assignment = tf.stack(assignment, axis=1)
     return assignment
 

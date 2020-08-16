@@ -1,8 +1,8 @@
 import tensorflow as tf
 
-from chambers.augmentations import box_normalize_xyxy, random_resize_min
+from chambers.augmentations import random_resize_min, box_normalize_cxcywh
 from chambers.losses import HungarianLoss
-from chambers.utils.boxes import box_xywh_to_xyxy, absolute2relative
+from chambers.utils.boxes import absolute2relative, box_xywh_to_cxcywh
 from chambers.utils.masking import remove_padding_image
 from datasets import CocoDetection
 from models import build_detr_resnet50
@@ -17,8 +17,8 @@ def loss_placeholder(y_true, y_pred):
     return tf.keras.losses.categorical_crossentropy(y_true, y_pred, from_logits=True)
 
 
-# COCO_PATH = "/home/crr/datasets/coco"
-COCO_PATH = "/home/ch/datasets/coco"
+COCO_PATH = "/datadrive/crr/datasets/coco"
+# COCO_PATH = "/home/ch/datasets/coco"
 BATCH_SIZE = 2
 
 
@@ -26,7 +26,6 @@ BATCH_SIZE = 2
 def augment(img, boxes, labels):
     # TODO: Random Horizontal Flip
 
-    # min_sides = [544]
     min_sides = [480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800]
 
     # TODO: Random choice (50%)
@@ -42,14 +41,15 @@ def augment(img, boxes, labels):
 
 def normalize(img, boxes, labels):
     img = normalize_image(img)
-    boxes = box_normalize_xyxy(boxes, img)
+    boxes = box_xywh_to_cxcywh(boxes)
+    boxes = box_normalize_cxcywh(boxes, img)
     return img, boxes, labels
 
 
 coco_data = CocoDetection(COCO_PATH, partition='train2017')  # boxes [x0, y0, w, h]
 dataset = tf.data.Dataset.from_generator(lambda: coco_data, output_types=(tf.string, tf.float32, tf.int32))
 # dataset = dataset.repeat()
-dataset = dataset.map(lambda img_path, boxes, labels: (read_jpeg(img_path), box_xywh_to_xyxy(boxes), tf.cast(labels, tf.float32)))
+dataset = dataset.map(lambda img_path, boxes, labels: (read_jpeg(img_path), boxes, tf.cast(labels, tf.float32)))
 dataset = dataset.map(augment)
 dataset = dataset.map(normalize)
 dataset = dataset.map(lambda img, boxes, labels: (img, tf.concat([boxes, tf.expand_dims(labels, 1)], axis=1)))
@@ -63,14 +63,12 @@ dataset = dataset.padded_batch(batch_size=BATCH_SIZE,
 
 N = len(coco_data)
 
-#%%
-for i, (x, y) in dataset.take(1000).enumerate():
-    # print(i, x.shape, y.shape)
-    print(i)
-
 # %%
 decode_sequence = False
-detr = build_detr_resnet50(mask_value=-1., return_decode_sequence=decode_sequence)
+detr = build_detr_resnet50(num_classes=91,
+                           num_queries=100,
+                           mask_value=-1.,
+                           return_decode_sequence=decode_sequence)
 detr.build()
 detr.load_from_pickle('checkpoints/detr-r50-e632da11.pickle')
 
@@ -79,16 +77,15 @@ hungarian = HungarianLoss(mask_value=-1., sequence_input=decode_sequence)
 # %% COMPILE
 detr.compile("adam",
              loss=hungarian,
-             # loss=loss_placeholder
              )
 
 # %% TRAIN
-# detr + loss_placeholder: 1s per step
-# detr + hungarian: 1s per step
+# detr + hungarian (no sequence) + 1 bsz + 800 min: 777, 744, 668 ms per step
+# detr + hungarian (no sequence) + 2 bsz + 800 min: 777, 744, 668 ms per step
 
 detr.fit(dataset,
-         epochs=1,
-         # steps_per_epoch=N
+         epochs=3,
+         steps_per_epoch=50
          )
 
 # %%
@@ -107,20 +104,15 @@ it = iter(dataset)
 # graph: 61.242064237594604
 
 # %%
-# x, y_true_boxes, y_true_logits = next(it)
 x, y = next(it)
 print("X SHAPE:", x.shape)
-print("BOXES SHAPE:", y.shape)
-# print("LABELS SHAPE:", y_true_logits.shape)
+print("Y SHAPE:", y.shape)
 
 # %%
-# y_pred_logits, y_pred_boxes = detr(x)
 y_pred = detr(x)
-# print("PRED LOGITS:", y_pred_logits.shape)
-print("PRED BOXES:", y_pred.shape)
+print("PRED:", y_pred.shape)
 
 # %%
-# loss = hungarian((y_true_logits, y_true_boxes), (y_pred_logits, y_pred_boxes))
 loss = hungarian(y, y_pred)
 print(loss)
 
@@ -146,13 +138,19 @@ x_v = denormalize_image(x_v)
 plot_results(x_v.numpy(), labels_v, scores, boxes_v)
 
 # %% Show ground truth
-# boxes_viz = boxes
-# boxes_viz = box_xyxy_to_yxyx(boxes_viz)
-#
-# colors = [[1.0, 0., 0.]]
-# box_img = tf.image.draw_bounding_boxes([x_v], [boxes_viz], colors)
-# box_img = tf.cast(box_img, tf.uint8)
-# box_img = box_img[0]
-#
-# plt.imshow(box_img.numpy())
-# plt.show()
+from chambers.utils.boxes import box_cxcywh_to_yxyx
+import matplotlib.pyplot as plt
+
+x_v = denormalize_image(x)
+boxes = y[..., :4]
+boxes_viz = box_cxcywh_to_yxyx(boxes)
+x_v = x_v[0]
+boxes_viz = boxes_viz[0]
+
+colors = [[1.0, 0., 0.]]
+box_img = tf.image.draw_bounding_boxes([x_v], [boxes_viz], colors)
+box_img = tf.cast(box_img, tf.uint8)
+box_img = box_img[0]
+
+plt.imshow(box_img.numpy())
+plt.show()
