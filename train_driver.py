@@ -1,12 +1,11 @@
 import tensorflow as tf
 
-from chambers.augmentations import random_resize_min, box_normalize_cxcywh
 from chambers.losses import HungarianLoss
-from chambers.utils.boxes import absolute2relative, box_xywh_to_cxcywh
+from chambers.utils.boxes import absolute2relative
 from chambers.utils.masking import remove_padding_image
-from datasets import CocoDetection
 from models import build_detr_resnet50
-from utils import read_jpeg, normalize_image, denormalize_image, plot_results
+from tf_datasets import load_coco_tf, load_coco
+from utils import denormalize_image, plot_results
 
 
 def loss_placeholder(y_true, y_pred):
@@ -17,51 +16,11 @@ def loss_placeholder(y_true, y_pred):
     return tf.keras.losses.categorical_crossentropy(y_true, y_pred, from_logits=True)
 
 
-COCO_PATH = "/datadrive/crr/datasets/coco"
-# COCO_PATH = "/home/ch/datasets/coco"
 BATCH_SIZE = 2
 
-
 # %%
-def augment(img, boxes, labels):
-    # TODO: Random Horizontal Flip
-
-    min_sides = [480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800]
-
-    # TODO: Random choice (50%)
-    img, boxes = random_resize_min(img, boxes, min_sides=min_sides, max_side=1333)
-    # ,
-    # img, boxes = random_resize_min(img, boxes, min_sides=[400, 500, 600], max_side=None)
-    # img, boxes = random_size_crop(img, boxes, min_size=384, max_size=600)
-    # img, boxes = random_resize_min(img, boxes, min_sides=min_sides, max_side=1333)
-    # TODO: End random choice
-
-    return img, boxes, labels
-
-
-def normalize(img, boxes, labels):
-    img = normalize_image(img)
-    boxes = box_xywh_to_cxcywh(boxes)
-    boxes = box_normalize_cxcywh(boxes, img)
-    return img, boxes, labels
-
-
-coco_data = CocoDetection(COCO_PATH, partition='train2017')  # boxes [x0, y0, w, h]
-dataset = tf.data.Dataset.from_generator(lambda: coco_data, output_types=(tf.string, tf.float32, tf.int32))
-# dataset = dataset.repeat()
-dataset = dataset.map(lambda img_path, boxes, labels: (read_jpeg(img_path), boxes, tf.cast(labels, tf.float32)))
-dataset = dataset.map(augment)
-dataset = dataset.map(normalize)
-dataset = dataset.map(lambda img, boxes, labels: (img, tf.concat([boxes, tf.expand_dims(labels, 1)], axis=1)))
-
-dataset = dataset.padded_batch(batch_size=BATCH_SIZE,
-                               # padded_shapes=((None, None, 3), (None, 4), (None,)),
-                               # padding_values=(tf.constant(-1.), tf.constant(-1.), tf.constant(-1.))
-                               padded_shapes=((None, None, 3), (None, 5)),
-                               padding_values=(tf.constant(-1.), tf.constant(-1.))
-                               )
-
-N = len(coco_data)
+dataset, N = load_coco_tf("train", BATCH_SIZE)
+# dataset, N = load_coco("/datadrive/crr/datasets/coco", "train", BATCH_SIZE)
 
 # %%
 decode_sequence = False
@@ -80,8 +39,10 @@ detr.compile("adam",
              )
 
 # %% TRAIN
-# detr + hungarian (no sequence) + 1 bsz + 800 min: 777, 744, 668 ms per step
-# detr + hungarian (no sequence) + 2 bsz + 800 min: 777, 744, 668 ms per step
+# detr + loss_placeholder (no sequence) + 1 bsz + 800 min: 773, 707, 613 ms per step
+# detr + loss_placeholder (no sequence) + 2 bsz + 800 min: 1000+, 978, 976 ms per step
+
+# detr + hungarian (no sequence) + 1 bsz + 800 min: 778, 711, 618 ms per step
 
 detr.fit(dataset,
          epochs=3,
@@ -119,6 +80,10 @@ print(loss)
 # %%
 scores, boxes_v, labels_v = detr.post_process(y_pred)
 
+# NOTE: The class indices of the tf.dataset does not match the original coco class indices, which the pretrained DETR
+#   model were trained on. This causes a high loss, even though the prediction is correct.
+print(labels_v, y[:, :, -1])
+
 # %% Show predictions
 v_idx = 0
 x_v = x[v_idx]
@@ -144,6 +109,7 @@ import matplotlib.pyplot as plt
 x_v = denormalize_image(x)
 boxes = y[..., :4]
 boxes_viz = box_cxcywh_to_yxyx(boxes)
+# boxes_viz = boxes
 x_v = x_v[0]
 boxes_viz = boxes_viz[0]
 
