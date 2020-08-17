@@ -76,6 +76,15 @@ class HungarianLoss(tf.keras.losses.Loss):
         # cost_matrix (RaggedTensor) [batch_size, n_pred_boxes, None]
         cost_matrix = self._compute_cost_matrix(y_true_labels, y_true_boxes, y_pred_logits, y_pred_boxes, batch_mask)
 
+        # Ignore cost matrices that are all NaN.
+        nan_matrices = tf.reduce_all(tf.math.is_nan(cost_matrix), axis=(1, 2))
+        if tf.reduce_any(nan_matrices):
+            no_nan_matrices = tf.logical_not(nan_matrices)
+            cost_matrix = tf.ragged.boolean_mask(cost_matrix, no_nan_matrices)
+            batch_mask = tf.cast(
+                tf.transpose(tf.transpose(tf.cast(batch_mask, tf.float32)) * tf.cast(no_nan_matrices, tf.float32)),
+                tf.bool)
+
         lsa = batch_linear_sum_assignment(cost_matrix)  # [n_true_boxes, 2]
 
         prediction_indices, target_indices = self._lsa_to_gather_indices(lsa,

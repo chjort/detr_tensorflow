@@ -1,6 +1,6 @@
 import numpy as np
 import tensorflow as tf
-from scipy.optimize import linear_sum_assignment as sp_lsa
+from scipy.optimize import linear_sum_assignment as linear_sum_assignment_scipy
 
 
 def set_supports_masking(model, verbose=True, **kwargs):
@@ -56,6 +56,10 @@ def round(x, decimals=0):
 
 
 def resize(image, min_side=800, max_side=1333):
+    """
+    image with rank 3 [h, w, c]
+    """
+
     # if tf.equal(tf.rank(image), 3):
     #     h = tf.cast(tf.shape(image)[0], tf.float32)
     #     w = tf.cast(tf.shape(image)[1], tf.float32)
@@ -80,16 +84,6 @@ def resize(image, min_side=800, max_side=1333):
     image = tf.image.resize(image, (nh, nw))
     return image
 
-
-def linear_sum_assignment_scipy(cost_matrix):
-
-    try:
-        lsa = sp_lsa(cost_matrix)
-    except ValueError as e:
-        print(cost_matrix)
-        raise ValueError("{}: {}".format(str(e), cost_matrix))
-
-    return lsa
 
 @tf.function(input_signature=[tf.TensorSpec(shape=[None, None], dtype=tf.float32)])
 def linear_sum_assignment(cost_matrix):
