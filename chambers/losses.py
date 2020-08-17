@@ -1,7 +1,8 @@
 import tensorflow as tf
 
 from chambers.utils.boxes import box_cxcywh_to_xyxy, boxes_giou
-from chambers.utils.tf import pairwise_l1, batch_linear_sum_assignment, repeat_indices
+from chambers.utils.tf import batch_linear_sum_assignment, repeat_indices
+from chambers.utils.tf import pairwise_l1 as _pairwise_l1
 
 
 class HungarianLoss(tf.keras.losses.Loss):
@@ -34,7 +35,7 @@ class HungarianLoss(tf.keras.losses.Loss):
     def call(self, y_true, y_pred):
         y_true_boxes = y_true[..., :-1]  # [0]
         y_true_labels = y_true[..., -1]  # [1]
-        y_pred_boxes = y_pred[..., :4]   # [0]
+        y_pred_boxes = y_pred[..., :4]  # [0]
         y_pred_logits = y_pred[..., 4:]  # [1]
 
         if self.sequence_input:
@@ -100,103 +101,19 @@ class HungarianLoss(tf.keras.losses.Loss):
         # get assigned predictions
         y_pred_boxes_lsa = tf.gather_nd(y_pred_boxes, prediction_indices)  # [n_true_boxes, 4]
 
-        loss_ce = self.weighted_cross_entropy_loss(y_true_labels_lsa, y_pred_logits) * self.class_loss_weight
-        loss_l1 = self.l1_loss(y_true_boxes_lsa, y_pred_boxes_lsa) * self.bbox_loss_weight
-        loss_giou = self.giou_loss(y_true_boxes_lsa, y_pred_boxes_lsa) * self.giou_loss_weight
+        loss_ce = weighted_cross_entropy_loss(y_true_labels_lsa, y_pred_logits) * self.class_loss_weight
+        loss_l1 = l1_loss(y_true_boxes_lsa, y_pred_boxes_lsa) * self.bbox_loss_weight
+        loss_giou = giou_loss(y_true_boxes_lsa, y_pred_boxes_lsa) * self.giou_loss_weight
 
         return loss_ce + loss_l1 + loss_giou
-
-    @staticmethod
-    def weighted_cross_entropy_loss(y_true, y_pred):
-        n_class = tf.shape(y_pred)[2]
-        y_true = tf.one_hot(tf.cast(y_true, tf.int32), depth=n_class)
-
-        real_class_weight = 1
-        non_class_weight = 0.1
-        class_weights = tf.concat([tf.repeat(tf.constant(real_class_weight, dtype=tf.float32), n_class - 1),
-                                   tf.constant([non_class_weight], dtype=tf.float32)],
-                                  axis=0)
-
-        weights = class_weights * y_true
-        weights = tf.reduce_sum(weights, axis=-1)
-
-        loss_ce = tf.keras.losses.categorical_crossentropy(y_true, y_pred, from_logits=True)
-        loss_ce = loss_ce * weights
-        loss_ce = tf.reduce_sum(loss_ce) / tf.reduce_sum(weights)
-        return loss_ce
-
-    @staticmethod
-    def l1_loss(y_true, y_pred):
-        n_target_boxes = tf.cast(tf.shape(y_true)[0], tf.float32)
-        loss_l1_box = tf.reduce_sum(tf.abs(y_true - y_pred)) / n_target_boxes
-        return loss_l1_box
-
-    @staticmethod
-    def giou_loss(y_true, y_pred):
-        y_true = box_cxcywh_to_xyxy(y_true)
-        y_pred = box_cxcywh_to_xyxy(y_pred)
-        giou = boxes_giou(y_true, y_pred)
-        giou = tf.linalg.diag_part(giou)
-        loss_giou_box = tf.reduce_mean(1 - giou)
-        return loss_giou_box
-
-    def _compute_label_cost(self, y_true, y_pred):
-        """
-        (batch_size, n_true_boxes), (batch_size, n_pred_boxes, n_classes)
-        """
-
-        n_class = tf.shape(y_pred)[2]
-
-        # labels
-        y_pred = tf.reshape(y_pred, [-1, n_class])
-        y_pred = tf.nn.softmax(y_pred, axis=-1)
-        # TODO: FIX Nan/Inf issue!
-
-        y_true = tf.reshape(y_true, [-1])
-
-        # logits cost
-        # TODO: tf.gather does not take indices that are out of bounds when using CPU? Works on Azure VM with GPU.
-        y_true = tf.where(tf.equal(y_true, self.mask_value), tf.zeros_like(y_true), y_true)
-        cost_class = -tf.gather(y_pred, tf.cast(y_true, tf.int32), axis=1)
-        return cost_class
-
-    def _compute_box_l1_cost(self, y_true, y_pred):
-        """
-        (batch_size, n_true_boxes, 4), (batch_size, n_pred_boxes, 4)
-        """
-
-        box_shape = tf.shape(y_pred)[-1]
-        y_pred = tf.reshape(y_pred, [-1, box_shape])
-
-        y_true = tf.reshape(y_true, [-1, tf.shape(y_true)[-1]])
-
-        # bbox cost
-        cost_bbox = pairwise_l1(y_pred, y_true)
-        return cost_bbox
-
-    def _compute_box_giou_cost(self, y_true, y_pred):
-        """
-        (batch_size, n_true_boxes, 4), (batch_size, n_pred_boxes, 4)
-        """
-
-        box_shape = tf.shape(y_pred)[-1]
-        y_pred = tf.reshape(y_pred, [-1, box_shape])
-
-        y_true = tf.reshape(y_true, [-1, tf.shape(y_true)[-1]])
-
-        # giou cost
-        y_true = box_cxcywh_to_xyxy(y_true)
-        y_pred = box_cxcywh_to_xyxy(y_pred)
-        cost_giou = -boxes_giou(y_true, y_pred)
-        return cost_giou
 
     def _compute_cost_matrix(self, y_true_logits, y_true_boxes, y_pred_logits, y_pred_boxes, batch_mask):
         batch_size = tf.shape(y_pred_logits)[0]
         n_pred_boxes = tf.shape(y_pred_logits)[1]
 
-        cost_class = self._compute_label_cost(y_true_logits, y_pred_logits)
-        cost_bbox = self._compute_box_l1_cost(y_true_boxes, y_pred_boxes)
-        cost_giou = self._compute_box_giou_cost(y_true_boxes, y_pred_boxes)
+        cost_class = pairwise_softmax(y_true_logits, y_pred_logits)
+        cost_bbox = pairwise_l1(y_true_boxes, y_pred_boxes)
+        cost_giou = pairwise_giou(y_true_boxes, y_pred_boxes)
 
         cost_matrix = self.bbox_loss_weight * cost_bbox + self.class_loss_weight * cost_class + self.giou_loss_weight * cost_giou
         cost_matrix = tf.reshape(cost_matrix, [batch_size, n_pred_boxes, -1])
@@ -237,3 +154,93 @@ class HungarianLoss(tf.keras.losses.Loss):
         prediction_idx = tf.transpose(indcs[:, :, 0])
         target_idx = tf.transpose(indcs[:, :, 1])
         return prediction_idx, target_idx
+
+
+def pairwise_giou(y_true, y_pred):
+    """
+    (batch_size, n_true_boxes, 4), (batch_size, n_pred_boxes, 4)
+    """
+
+    box_shape = tf.shape(y_pred)[-1]
+    y_pred = tf.reshape(y_pred, [-1, box_shape])
+
+    y_true = tf.reshape(y_true, [-1, tf.shape(y_true)[-1]])
+
+    # giou cost
+    y_true = box_cxcywh_to_xyxy(y_true)  # TODO: Remove these box conversions. Assume the format at input.
+    y_pred = box_cxcywh_to_xyxy(y_pred)
+    cost_giou = -boxes_giou(y_true, y_pred)
+    return cost_giou
+
+
+def pairwise_l1(y_true, y_pred):
+    """
+    (batch_size, n_true_boxes, 4), (batch_size, n_pred_boxes, 4)
+    """
+
+    box_shape = tf.shape(y_pred)[-1]
+    y_pred = tf.reshape(y_pred, [-1, box_shape])
+
+    y_true = tf.reshape(y_true, [-1, tf.shape(y_true)[-1]])
+
+    # bbox cost
+    cost_bbox = _pairwise_l1(y_pred, y_true)
+    return cost_bbox
+
+
+def pairwise_softmax(y_true, y_pred):
+    """
+    (batch_size, n_true_boxes), (batch_size, n_pred_boxes, n_classes)
+    """
+
+    n_class = tf.shape(y_pred)[2]
+
+    # labels
+    y_pred = tf.reshape(y_pred, [-1, n_class])
+    y_pred = tf.nn.softmax(y_pred, axis=-1)
+
+    y_true = tf.reshape(y_true, [-1])
+
+    # logits cost
+    # NOTE: tf.gather does not take indices that are out of bounds when using CPU. So make sure to convert out of bounds
+    #   indices to 0.
+    n_pred = tf.cast(tf.shape(y_pred)[0], y_true.dtype)
+    y_true = tf.where(tf.greater(y_true, n_pred), tf.zeros_like(y_true), y_true)
+    y_true = tf.where(tf.less(y_true, 0), tf.zeros_like(y_true), y_true)
+
+    cost_class = -tf.gather(y_pred, tf.cast(y_true, tf.int32), axis=1)
+    return cost_class
+
+
+def giou_loss(y_true, y_pred):
+    y_true = box_cxcywh_to_xyxy(y_true)
+    y_pred = box_cxcywh_to_xyxy(y_pred)
+    giou = boxes_giou(y_true, y_pred)
+    giou = tf.linalg.diag_part(giou)
+    loss_giou_box = tf.reduce_mean(1 - giou)
+    return loss_giou_box
+
+
+def l1_loss(y_true, y_pred):
+    n_target_boxes = tf.cast(tf.shape(y_true)[0], tf.float32)
+    loss_l1_box = tf.reduce_sum(tf.abs(y_true - y_pred)) / n_target_boxes
+    return loss_l1_box
+
+
+def weighted_cross_entropy_loss(y_true, y_pred):
+    n_class = tf.shape(y_pred)[2]
+    y_true = tf.one_hot(tf.cast(y_true, tf.int32), depth=n_class)
+
+    real_class_weight = 1
+    non_class_weight = 0.1
+    class_weights = tf.concat([tf.repeat(tf.constant(real_class_weight, dtype=tf.float32), n_class - 1),
+                               tf.constant([non_class_weight], dtype=tf.float32)],
+                              axis=0)
+
+    weights = class_weights * y_true
+    weights = tf.reduce_sum(weights, axis=-1)
+
+    loss_ce = tf.keras.losses.categorical_crossentropy(y_true, y_pred, from_logits=True)
+    loss_ce = loss_ce * weights
+    loss_ce = tf.reduce_sum(loss_ce) / tf.reduce_sum(weights)
+    return loss_ce
