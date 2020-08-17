@@ -1,3 +1,4 @@
+import numpy as np
 import tensorflow as tf
 
 from chambers.utils.boxes import box_cxcywh_to_xyxy, boxes_giou
@@ -79,6 +80,9 @@ class HungarianLoss(tf.keras.losses.Loss):
 
         # Ignore cost matrices that are all NaN.
         nan_matrices = tf.reduce_all(tf.math.is_nan(cost_matrix), axis=(1, 2))
+        if tf.reduce_all(nan_matrices):
+            return np.nan
+
         if tf.reduce_any(nan_matrices):
             no_nan_matrices = tf.logical_not(nan_matrices)
             cost_matrix = tf.ragged.boolean_mask(cost_matrix, no_nan_matrices)
