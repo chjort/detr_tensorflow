@@ -9,22 +9,22 @@ from chambers.utils.tf import batch_linear_sum_assignment
 BATCH_SIZE = 2
 
 # %%
-samples = np.load("../x_pt.npy")
+samples = np.load("x_pt.npy")
 samples = tf.convert_to_tensor(samples)
 samples = tf.transpose(samples, [0, 2, 3, 1])
 
-mask = np.load("../mask_pt.npy")
+mask = np.load("mask_pt.npy")
 mask = tf.convert_to_tensor(mask)
 
 x1 = tf.where(tf.expand_dims(mask[0], -1), tf.ones_like(samples[0]) * -1., samples[0])  # masked values to -1
 x2 = tf.where(tf.expand_dims(mask[1], -1), tf.ones_like(samples[1]) * -1., samples[1])  # masked values to -1
 x = tf.stack([x1, x2], axis=0)
 
-with open("../y_pt.pickle", "rb") as f:
+with open("y_pt.pickle", "rb") as f:
     targets = pickle.load(f)
     targets = [{k: tf.convert_to_tensor(v) for k, v in t.items() if k in ("boxes", "labels")} for t in targets]
 
-with open("../pred_pt.pickle", "rb") as f:
+with open("pred_pt.pickle", "rb") as f:
     pred = pickle.load(f)
     pred["pred_logits"] = tf.convert_to_tensor(pred["pred_logits"])
     pred["pred_boxes"] = tf.convert_to_tensor(pred["pred_boxes"])
@@ -33,9 +33,9 @@ with open("../pred_pt.pickle", "rb") as f:
     class_out = pred["pred_logits"]
     box_out = pred["pred_boxes"]
 
-# class_out = tf.transpose(tf.stack([*[aux["pred_logits"] for aux in pred["aux_outputs"]], class_out], axis=0),
-#                          [1, 0, 2, 3])
-# box_out = tf.transpose(tf.stack([*[aux["pred_boxes"] for aux in pred["aux_outputs"]], box_out], axis=0), [1, 0, 2, 3])
+class_out = tf.transpose(tf.stack([*[aux["pred_logits"] for aux in pred["aux_outputs"]], class_out], axis=0),
+                         [1, 0, 2, 3])
+box_out = tf.transpose(tf.stack([*[aux["pred_boxes"] for aux in pred["aux_outputs"]], box_out], axis=0), [1, 0, 2, 3])
 
 boxes = [target["boxes"] for target in targets]
 labels = [target["labels"] for target in targets]

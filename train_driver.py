@@ -19,8 +19,8 @@ def loss_placeholder(y_true, y_pred):
 BATCH_SIZE = 2
 
 # %%
-dataset, N = load_coco_tf("train", BATCH_SIZE)
-# dataset, N = load_coco("/datadrive/crr/datasets/coco", "train", BATCH_SIZE)
+# dataset, N = load_coco_tf("train", BATCH_SIZE)
+dataset, N = load_coco("/datadrive/crr/datasets/coco", "train", BATCH_SIZE)
 
 # %%
 decode_sequence = False
@@ -51,18 +51,6 @@ detr.fit(dataset,
 
 # %%
 it = iter(dataset)
-
-# import time
-# st = time.time()
-# for x, y in dataset.take(10):
-#     y_pred = detr(x)
-#     loss = hungarian(y, y_pred)
-#     print(loss)
-# print(time.time() - st)
-
-# eager: 59.922558307647705
-# graph: 64.54768967628479 (excessive retracing)
-# graph: 61.242064237594604
 
 # %%
 x, y = next(it)
