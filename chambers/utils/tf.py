@@ -72,12 +72,16 @@ def resize(image, min_side=800, max_side=1333):
     w = tf.cast(tf.shape(image)[1], tf.float32)
 
     cur_min_side = tf.minimum(w, h)
-    cur_max_side = tf.maximum(w, h)
-
     min_side = tf.cast(min_side, tf.float32)
-    max_side = tf.cast(max_side, tf.float32)
-    scale = tf.minimum(max_side / cur_max_side,
-                       min_side / cur_min_side)
+
+    if max_side is not None:
+        cur_max_side = tf.maximum(w, h)
+        max_side = tf.cast(max_side, tf.float32)
+        scale = tf.minimum(max_side / cur_max_side,
+                           min_side / cur_min_side)
+    else:
+        scale = min_side / cur_min_side
+
     nh = tf.cast(scale * h, tf.int32)
     nw = tf.cast(scale * w, tf.int32)
 
