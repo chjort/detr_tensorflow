@@ -4,7 +4,7 @@ from chambers.losses import HungarianLoss
 from chambers.utils.boxes import absolute2relative
 from chambers.utils.masking import remove_padding_image
 from models import build_detr_resnet50
-from tf_datasets import load_coco_tf, load_coco
+from tf_datasets import load_coco, load_coco_tf
 from utils import denormalize_image, plot_results
 
 
@@ -16,11 +16,11 @@ def loss_placeholder(y_true, y_pred):
     return tf.keras.losses.categorical_crossentropy(y_true, y_pred, from_logits=True)
 
 
-BATCH_SIZE = 2
+BATCH_SIZE = 1
 
 # %%
-# dataset, N = load_coco_tf("train", BATCH_SIZE)
-dataset, N = load_coco("/datadrive/crr/datasets/coco", "train", BATCH_SIZE)
+dataset, N = load_coco_tf("train", BATCH_SIZE)
+# dataset, N = load_coco("/datadrive/crr/datasets/coco", "train", BATCH_SIZE)
 
 # %%
 decode_sequence = False
@@ -56,6 +56,9 @@ it = iter(dataset)
 x, y = next(it)
 print("X SHAPE:", x.shape)
 print("Y SHAPE:", y.shape)
+
+# n_ypad = tf.reduce_sum(tf.cast(tf.equal(x[:, :, 0, 0], -1.), tf.float32), axis=1)
+# n_xpad = tf.reduce_sum(tf.cast(tf.equal(x[:, 0, :, 0], -1.), tf.float32), axis=1)
 
 # %%
 y_pred = detr(x)
@@ -94,12 +97,14 @@ plot_results(x_v.numpy(), labels_v, scores, boxes_v)
 from chambers.utils.boxes import box_cxcywh_to_yxyx
 import matplotlib.pyplot as plt
 
+i = 0
+
 x_v = denormalize_image(x)
 boxes = y[..., :4]
 boxes_viz = box_cxcywh_to_yxyx(boxes)
 # boxes_viz = boxes
-x_v = x_v[0]
-boxes_viz = boxes_viz[0]
+x_v = x_v[i]
+boxes_viz = boxes_viz[i]
 
 colors = [[1.0, 0., 0.]]
 box_img = tf.image.draw_bounding_boxes([x_v], [boxes_viz], colors)
