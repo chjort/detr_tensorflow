@@ -3,14 +3,52 @@ import tensorflow as tf
 from chambers.utils.tf import resize as _resize
 
 
-def resize(img, box, min_side=800, max_side=1333):
+@tf.function
+def flip_up_down(image, bboxes):
+    """
+    Flip an image and bounding boxes vertically (upside down).
+    :param image: 3-D Tensor of shape [height, width, channels]
+    :param bboxes: 2-D Tensor of shape (box_number, 4) containing bounding boxes in format [ymin, xmin, ymin, xmax]
+    :return: image, bounding boxes
+    """
+    h = tf.cast(tf.shape(image)[0], tf.float32)
+    with tf.name_scope("flip_up_down"):
+        # bboxes = bboxes * tf.constant([-1, 1, -1, 1], dtype=tf.float32) + tf.stack([1.0, 0.0, 1.0, 0.0])
+        bboxes = bboxes * tf.constant([-1, 1, -1, 1], dtype=tf.float32) + tf.stack([h, 0.0, h, 0.0])
+        bboxes = tf.stack([bboxes[:, 2], bboxes[:, 1], bboxes[:, 0], bboxes[:, 3]], axis=1)
+
+        image = tf.image.flip_up_down(image)
+
+    return image, bboxes
+
+
+@tf.function
+def flip_left_right(image, bboxes):
+    """
+    Flip an image and bounding boxes horizontally (left to right).
+    :param image: 3-D Tensor of shape [height, width, channels]
+    :param bboxes: 2-D Tensor of shape (box_number, 4) containing bounding boxes in format [ymin, xmin, ymin, xmax]
+    :return: image, bounding boxes
+    """
+    w = tf.cast(tf.shape(image)[1], tf.float32)
+    with tf.name_scope("flip_left_right"):
+        # bboxes = bboxes * tf.constant([1, -1, 1, -1], dtype=tf.float32) + tf.stack([0.0, 1.0, 0.0, 1.0])
+        bboxes = bboxes * tf.constant([1, -1, 1, -1], dtype=tf.float32) + tf.stack([0.0, w, 0.0, w])
+        bboxes = tf.stack([bboxes[:, 0], bboxes[:, 3], bboxes[:, 2], bboxes[:, 1]], axis=1)
+
+        image = tf.image.flip_left_right(image)
+
+    return image, bboxes
+
+
+def resize(img, boxes, min_side=800, max_side=1333):
     """
 
 
     :param img: image with shape [h, w, c]
     :type img:
-    :param box: bounding box with format [x0, y0, x1, y1], or [x0, y0, w, h] or [center_x, center_y, w, h]
-    :type box:
+    :param boxes: 2-D Tensor of shape (box_number, 4) containing bounding boxes in format [y0, x0, y1, x1]
+    :type boxes:
     :param min_side:
     :type min_side:
     :param max_side:
@@ -27,20 +65,20 @@ def resize(img, box, min_side=800, max_side=1333):
     h_ratio = hw_ratios[0]
     w_ratio = hw_ratios[1]
 
-    # boxr = box * tf.stack([h_ratio, w_ratio, h_ratio, w_ratio])  # [y0, x0, y1, x1]
+    boxr = boxes * tf.stack([h_ratio, w_ratio, h_ratio, w_ratio])  # [y0, x0, y1, x1]
 
     # [x0, y0, x1, y1], or [x0, y0, w, h] or [center_x, center_y, w, h]
-    boxr = box * tf.stack([w_ratio, h_ratio, w_ratio, h_ratio])
+    # boxr = boxes * tf.stack([w_ratio, h_ratio, w_ratio, h_ratio])
 
     return imgr, boxr
 
 
-def random_resize_min(img, box, min_sides, max_side=1333):
+def random_resize_min(img, boxes, min_sides, max_side=1333):
     min_sides = tf.convert_to_tensor(min_sides)
 
     rand_idx = tf.random.uniform([1], minval=0, maxval=tf.shape(min_sides)[0], dtype=tf.int32)[0]
     min_side = min_sides[rand_idx]
-    return resize(img, box, min_side=min_side, max_side=max_side)
+    return resize(img, boxes, min_side=min_side, max_side=max_side)
 
 
 def box_normalize_xyxy(boxes, img):
