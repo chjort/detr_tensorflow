@@ -3,42 +3,54 @@ import tensorflow as tf
 from chambers.utils.tf import resize as _resize
 
 
+def random_size_crop(img, boxes, min_size, max_size):
+    hw = tf.random.uniform([2], min_size, max_size + 1, dtype=tf.int32)
+    h = hw[0]
+    w = hw[1]
+
+    img = tf.image.random_crop(img, (h, w, 3))
+
+    # TODO: Crop boxes
+
+    return img, boxes
+
+
 @tf.function
-def flip_up_down(image, bboxes):
+def flip_up_down(img, boxes):
     """
     Flip an image and bounding boxes vertically (upside down).
-    :param image: 3-D Tensor of shape [height, width, channels]
-    :param bboxes: 2-D Tensor of shape (box_number, 4) containing bounding boxes in format [ymin, xmin, ymin, xmax]
+    :param img: 3-D Tensor of shape [height, width, channels]
+    :param boxes: 2-D Tensor of shape (box_number, 4) containing bounding boxes in format [y0, x0, y0, x0]
     :return: image, bounding boxes
     """
-    h = tf.cast(tf.shape(image)[0], tf.float32)
+    h = tf.cast(tf.shape(img)[0], tf.float32)
     with tf.name_scope("flip_up_down"):
         # bboxes = bboxes * tf.constant([-1, 1, -1, 1], dtype=tf.float32) + tf.stack([1.0, 0.0, 1.0, 0.0])
-        bboxes = bboxes * tf.constant([-1, 1, -1, 1], dtype=tf.float32) + tf.stack([h, 0.0, h, 0.0])
-        bboxes = tf.stack([bboxes[:, 2], bboxes[:, 1], bboxes[:, 0], bboxes[:, 3]], axis=1)
+        boxes = boxes * tf.constant([-1, 1, -1, 1], dtype=tf.float32) + tf.stack([h, 0.0, h, 0.0])
+        boxes = tf.stack([boxes[:, 2], boxes[:, 1], boxes[:, 0], boxes[:, 3]], axis=1)
 
-        image = tf.image.flip_up_down(image)
+        img = tf.image.flip_up_down(img)
 
-    return image, bboxes
+    return img, boxes
 
 
 @tf.function
-def flip_left_right(image, bboxes):
+def flip_left_right(img, boxes):
     """
     Flip an image and bounding boxes horizontally (left to right).
-    :param image: 3-D Tensor of shape [height, width, channels]
-    :param bboxes: 2-D Tensor of shape (box_number, 4) containing bounding boxes in format [ymin, xmin, ymin, xmax]
+    :param img: 3-D Tensor of shape [height, width, channels]
+    :param boxes: 2-D Tensor of shape (box_number, 4) containing bounding boxes in format [y0, x0, y0, x0]
     :return: image, bounding boxes
     """
-    w = tf.cast(tf.shape(image)[1], tf.float32)
+    w = tf.cast(tf.shape(img)[1], tf.float32)
     with tf.name_scope("flip_left_right"):
         # bboxes = bboxes * tf.constant([1, -1, 1, -1], dtype=tf.float32) + tf.stack([0.0, 1.0, 0.0, 1.0])
-        bboxes = bboxes * tf.constant([1, -1, 1, -1], dtype=tf.float32) + tf.stack([0.0, w, 0.0, w])
-        bboxes = tf.stack([bboxes[:, 0], bboxes[:, 3], bboxes[:, 2], bboxes[:, 1]], axis=1)
+        boxes = boxes * tf.constant([1, -1, 1, -1], dtype=tf.float32) + tf.stack([0.0, w, 0.0, w])
+        boxes = tf.stack([boxes[:, 0], boxes[:, 3], boxes[:, 2], boxes[:, 1]], axis=1)
 
-        image = tf.image.flip_left_right(image)
+        img = tf.image.flip_left_right(img)
 
-    return image, bboxes
+    return img, boxes
 
 
 def resize(img, boxes, min_side=800, max_side=1333):

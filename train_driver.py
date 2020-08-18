@@ -60,6 +60,12 @@ print("Y SHAPE:", y.shape)
 # n_ypad = tf.reduce_sum(tf.cast(tf.equal(x[:, :, 0, 0], -1.), tf.float32), axis=1)
 # n_xpad = tf.reduce_sum(tf.cast(tf.equal(x[:, 0, :, 0], -1.), tf.float32), axis=1)
 
+#%%
+from chambers.augmentations import random_size_crop
+
+xr, yr = random_size_crop(x[0], y[0][:, :4], min_size=128, max_size=500)
+
+
 # %%
 y_pred = detr(x)
 print("PRED:", y_pred.shape)
