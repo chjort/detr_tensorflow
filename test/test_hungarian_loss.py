@@ -1,4 +1,5 @@
 import pickle
+import time
 
 import numpy as np
 import tensorflow as tf
@@ -57,10 +58,26 @@ hungarian = HungarianLoss(mask_value=-1., sequence_input=False)
 y_true, y_pred = load_samples()
 loss = hungarian(y_true, y_pred)
 
+times = []
+for i in range(200):
+    st = time.time()
+    hungarian(y_true, y_pred)
+    end_time = time.time() - st
+    times.append(end_time)
+print(np.mean(times))  # 0.002422827482223511 (CH CPU)
+
 # with sequence
 hungarian = HungarianLoss(mask_value=-1., sequence_input=True)
 y_true, y_pred = load_samples(as_sequence=True)
 seq_loss = hungarian(y_true, y_pred)
+
+times = []
+for i in range(200):
+    st = time.time()
+    hungarian(y_true, y_pred)
+    end_time = time.time() - st
+    times.append(end_time)
+print(np.mean(times))  # 0.012478135824203491 (CH CPU)
 
 print(loss)
 print(seq_loss)

@@ -109,7 +109,8 @@ class HungarianLoss(tf.keras.losses.Loss):
         loss_l1 = l1_loss(y_true_boxes_lsa, y_pred_boxes_lsa) * self.bbox_loss_weight
         loss_giou = giou_loss(y_true_boxes_lsa, y_pred_boxes_lsa) * self.giou_loss_weight
 
-        return loss_ce + loss_l1 + loss_giou
+        loss = loss_ce + loss_l1 + loss_giou
+        return loss
 
     def _compute_cost_matrix(self, y_true_logits, y_true_boxes, y_pred_logits, y_pred_boxes, batch_mask):
         batch_size = tf.shape(y_pred_logits)[0]
@@ -248,3 +249,26 @@ def weighted_cross_entropy_loss(y_true, y_pred):
     loss_ce = loss_ce * weights
     loss_ce = tf.reduce_sum(loss_ce) / tf.reduce_sum(weights)
     return loss_ce
+
+
+class WeightedSparseCategoricalCrossEntropy(tf.keras.losses.Loss):
+    def __init__(self, name="weighted_sparse_categorical_cross_entropy"):
+        super().__init__(reduction=tf.keras.losses.Reduction.NONE, name=name)
+        real_class_weight = 1
+        non_class_weight = 0.1
+        self.n_class = 92
+        class_weights = tf.concat([tf.repeat(tf.constant(real_class_weight, dtype=tf.float32), self.n_class - 1),
+                                   tf.constant([non_class_weight], dtype=tf.float32)],
+                                  axis=0)
+        self.class_weights = class_weights
+
+    def call(self, y_true, y_pred):
+        y_true = tf.one_hot(tf.cast(y_true, tf.int32), depth=self.n_class)
+
+        weights = self.class_weights * y_true
+        weights = tf.reduce_sum(weights, axis=-1)
+
+        loss_ce = tf.keras.losses.categorical_crossentropy(y_true, y_pred, from_logits=True)
+        loss_ce = loss_ce * weights
+        loss_ce = tf.reduce_sum(loss_ce) / tf.reduce_sum(weights)
+        return loss_ce
