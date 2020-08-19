@@ -4,7 +4,7 @@ import time
 import numpy as np
 import tensorflow as tf
 
-from chambers.losses import HungarianLoss
+from chambers.losses import HungarianLoss, pairwise_softmax, pairwise_l1, pairwise_giou
 
 
 def load_samples(as_sequence=False):
@@ -54,7 +54,10 @@ def load_samples(as_sequence=False):
     return y_true, y_pred
 
 
-hungarian = HungarianLoss(mask_value=-1., sequence_input=False)
+hungarian = HungarianLoss(lsa_losses=[pairwise_softmax, pairwise_l1, pairwise_giou],
+                          lsa_loss_weights=[1, 5, 2],
+                          mask_value=-1.,
+                          sequence_input=False)
 y_true, y_pred = load_samples()
 loss = hungarian(y_true, y_pred)
 
@@ -67,7 +70,10 @@ for i in range(200):
 print(np.mean(times))  # 0.002422827482223511 (CH CPU)
 
 # with sequence
-hungarian = HungarianLoss(mask_value=-1., sequence_input=True)
+hungarian = HungarianLoss(lsa_losses=[pairwise_softmax, pairwise_l1, pairwise_giou],
+                          lsa_loss_weights=[1, 5, 2],
+                          mask_value=-1.,
+                          sequence_input=True)
 y_true, y_pred = load_samples(as_sequence=True)
 seq_loss = hungarian(y_true, y_pred)
 

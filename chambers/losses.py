@@ -16,15 +16,15 @@ class HungarianLoss(tf.keras.losses.Loss):
 
     """
 
-    def __init__(self, mask_value=None, sequence_input=False, name="hungarian_loss"):
+    def __init__(self, lsa_losses, lsa_loss_weights=None, mask_value=None, sequence_input=False, name="hungarian_loss"):
         self.mask_value = mask_value
         self.sequence_input = sequence_input
         self.class_loss_weight = 1
         self.bbox_loss_weight = 5
         self.giou_loss_weight = 2
 
-        self.lsa_losses = [pairwise_softmax, pairwise_l1, pairwise_giou]
-        self.lsa_loss_weights = [1, 5, 2]
+        self.lsa_losses = lsa_losses
+        self.lsa_loss_weights = lsa_loss_weights
 
         if sequence_input:
             self.input_signature = [tf.TensorSpec(shape=(None, None, 5), dtype=tf.float32),
@@ -102,9 +102,15 @@ class HungarianLoss(tf.keras.losses.Loss):
         # get assigned predictions
         y_pred_boxes_lsa = tf.gather_nd(y_pred_boxes, prediction_indices)  # [n_true_boxes, 4]
 
+        # tf.print(tf.shape(y_true_labels_lsa), tf.shape(y_pred_logits), "-", tf.shape(y_true_boxes_lsa),
+        #          tf.shape(y_pred_boxes_lsa))
+
+        # TODO: Make these loss functions take ``y_true_lsa`` and ``y_pred_lsa`` as input
         loss_ce = weighted_cross_entropy_loss(y_true_labels_lsa, y_pred_logits) * self.class_loss_weight
         loss_l1 = l1_loss(y_true_boxes_lsa, y_pred_boxes_lsa) * self.bbox_loss_weight
         loss_giou = giou_loss(y_true_boxes_lsa, y_pred_boxes_lsa) * self.giou_loss_weight
+
+        # TODO: and then mask padded boxes/labels here
 
         loss = loss_ce + loss_l1 + loss_giou
         return loss
@@ -120,14 +126,8 @@ class HungarianLoss(tf.keras.losses.Loss):
 
     @staticmethod
     def _compute_cost_matrix_mask(cost_matrix, batch_mask):
-        batch_size = tf.shape(cost_matrix)[0]
-        n_box = tf.shape(cost_matrix)[1]
-        batch_mask_flat = tf.reshape(batch_mask, [-1])
-
-        mask_mask = tf.repeat(tf.eye(batch_size, batch_size), tf.shape(batch_mask)[1])
-        cost_matrix_mask = tf.cast(tf.tile(batch_mask_flat, [batch_size]), tf.float32) * tf.cast(mask_mask, tf.float32)
-        cost_matrix_mask = tf.cast(tf.reshape(cost_matrix_mask, [batch_size, -1]), tf.bool)
-        cost_matrix_mask = tf.tile(tf.expand_dims(cost_matrix_mask, 1), [1, n_box, 1])
+        n_pred_boxes = tf.shape(cost_matrix)[1]
+        cost_matrix_mask = tf.tile(tf.expand_dims(batch_mask, 1), [1, n_pred_boxes, 1])
         return cost_matrix_mask
 
     def _get_batch_mask(self, y_true):
@@ -154,22 +154,16 @@ def pairwise_giou(y_true, y_pred):
     """
     :param y_true: (batch_size, n_true_boxes, 5)
     :param y_pred: (batch_size, n_pred_boxes, 4 + n_classes)
-    :return: [batch_size * n_pred_boxes, batch_size * n_true_boxes]
+    :return: (batch_size, n_pred_boxes, n_true_boxes)
     """
 
     y_true = y_true[..., :-1]  # [batch_size, n_true_boxes, 4]
     y_pred = y_pred[..., :4]  # [batch_size, n_pred_boxes, 4]
-    batch_size = tf.shape(y_true)[0]
-    n_pred_boxes = tf.shape(y_pred)[1]
-
-    y_pred = tf.reshape(y_pred, [-1, 4])  # [batch_size * n_pred_boxes, 4]
-    y_true = tf.reshape(y_true, [-1, 4])  # [batch_size * n_true_boxes, 4]
 
     # giou cost
     y_true = box_cxcywh_to_xyxy(y_true)  # TODO: Remove these box conversions. Assume the format at input.
     y_pred = box_cxcywh_to_xyxy(y_pred)
-    cost_giou = -boxes_giou(y_true, y_pred)
-    cost_giou = tf.reshape(cost_giou, [batch_size, n_pred_boxes, -1])
+    cost_giou = tf.vectorized_map(lambda inp: -boxes_giou(*inp), (y_true, y_pred))
     return cost_giou
 
 
@@ -177,20 +171,14 @@ def pairwise_l1(y_true, y_pred):
     """
     :param y_true: (batch_size, n_true_boxes, 5)
     :param y_pred: (batch_size, n_pred_boxes, 4 + n_classes)
-    :return: [batch_size * n_pred_boxes, batch_size * n_true_boxes]
+    :return: (batch_size, n_pred_boxes, n_true_boxes)
     """
 
     y_true = y_true[..., :-1]  # [batch_size, n_true_boxes, 4]
     y_pred = y_pred[..., :4]  # [batch_size, n_pred_boxes, 4]
-    batch_size = tf.shape(y_true)[0]
-    n_pred_boxes = tf.shape(y_pred)[1]
-
-    y_pred = tf.reshape(y_pred, [-1, 4])  # [batch_size * n_pred_boxes, 4]
-    y_true = tf.reshape(y_true, [-1, 4])  # [batch_size * n_true_boxes, 4]
 
     # bbox cost
     cost_bbox = _pairwise_l1(y_pred, y_true)
-    cost_bbox = tf.reshape(cost_bbox, [batch_size, n_pred_boxes, -1])
     return cost_bbox
 
 
@@ -198,35 +186,27 @@ def pairwise_softmax(y_true, y_pred):
     """
     :param y_true: (batch_size, n_true_boxes, 5)
     :param y_pred: (batch_size, n_pred_boxes, 4 + n_classes)
-    :return: [batch_size * n_pred_boxes, batch_size * n_true_boxes]
+    :return: (batch_size, n_pred_boxes, n_true_boxes)
     """
 
-    y_true = y_true[..., -1]  # [batch_size, n_true_boxes]
-    y_pred = y_pred[..., 4:]  # [batch_size, n_pred_boxes, n_classes]
-    batch_size = tf.shape(y_true)[0]
-    n_pred_boxes = tf.shape(y_pred)[1]
-    n_class = tf.shape(y_pred)[2]
-
-    # labels
-    y_pred = tf.reshape(y_pred, [-1, n_class])
+    y_true = y_true[..., -1]
+    y_pred = y_pred[..., 4:]
     y_pred = tf.nn.softmax(y_pred, axis=-1)
-    y_true = tf.reshape(y_true, [-1])
 
     # tf.gather does not take indices that are out of bounds when using CPU. So converting out of bounds indices to 0.
-    n_pred = tf.cast(tf.shape(y_pred)[0], y_true.dtype)
-    y_true = tf.where(tf.greater(y_true, n_pred), tf.zeros_like(y_true), y_true)
-    y_true = tf.where(tf.less(y_true, 0), tf.zeros_like(y_true), y_true)
+    n_class = tf.cast(tf.shape(y_pred)[-1], y_true.dtype)
+    out_of_bound = tf.logical_or(tf.less(y_true, 0), tf.greater(y_true, n_class))
+    y_true = tf.where(out_of_bound, tf.zeros_like(y_true), y_true)
+    y_true = tf.cast(y_true, tf.int32)
 
-    cost_class = -tf.gather(y_pred, tf.cast(y_true, tf.int32), axis=1)
-    cost_class = tf.reshape(cost_class, [batch_size, n_pred_boxes, -1])
-    return cost_class
+    return tf.vectorized_map(lambda inp: -tf.gather(*inp, axis=-1), (y_pred, y_true))
 
 
 def giou_loss(y_true, y_pred):
     y_true = box_cxcywh_to_xyxy(y_true)
     y_pred = box_cxcywh_to_xyxy(y_pred)
     giou = boxes_giou(y_true, y_pred)
-    giou = tf.linalg.diag_part(giou)
+    giou = tf.linalg.diag_part(giou)  # TODO: Implement a boxes_giou that is not pairwise.
     loss_giou_box = tf.reduce_mean(1 - giou)
     return loss_giou_box
 

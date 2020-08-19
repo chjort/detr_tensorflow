@@ -1,10 +1,10 @@
 import tensorflow as tf
 
-from chambers.losses import HungarianLoss
+from chambers.losses import HungarianLoss, pairwise_softmax, pairwise_l1, pairwise_giou
 from chambers.utils.boxes import absolute2relative
 from chambers.utils.masking import remove_padding_image
 from models import build_detr_resnet50
-from tf_datasets import load_coco_tf, load_coco
+from tf_datasets import load_coco
 from utils import denormalize_image, plot_results
 
 # %%
@@ -22,7 +22,10 @@ detr = build_detr_resnet50(num_classes=91,
 detr.build()
 detr.load_from_pickle('checkpoints/detr-r50-e632da11.pickle')
 
-hungarian = HungarianLoss(mask_value=-1., sequence_input=decode_sequence)
+hungarian = HungarianLoss(lsa_losses=[pairwise_softmax, pairwise_l1, pairwise_giou],
+                          lsa_loss_weights=[1, 5, 2],
+                          mask_value=-1.,
+                          sequence_input=decode_sequence)
 
 # %% COMPILE
 detr.compile("adam",
@@ -51,7 +54,7 @@ print("Y SHAPE:", y.shape)
 # n_ypad = tf.reduce_sum(tf.cast(tf.equal(x[:, :, 0, 0], -1.), tf.float32), axis=1)
 # n_xpad = tf.reduce_sum(tf.cast(tf.equal(x[:, 0, :, 0], -1.), tf.float32), axis=1)
 
-#%%
+# %%
 from chambers.augmentations import random_size_crop
 
 xr, yr = random_size_crop(x[0], y[0][:, :4], min_size=128, max_size=500)
