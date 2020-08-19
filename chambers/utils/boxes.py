@@ -17,15 +17,15 @@ def box_area(boxes):
 
 
 # TODO: put in metrics
-def boxes_iou(y_pred, y_true):
+def boxes_iou(y_true, y_pred):
     """
     Computes IOU between predicted bounding boxes and ground truth bounding boxes.
     The bounding boxes are expected to have format [x0, y0, x1, y1].
 
-    :param y_pred: Predicted bounding box with format [x0, y0, x1, y1].
-    :type y_pred: tensorflow.Tensor
     :param y_true: Ground truth bounding box with format [x0, y0, x1, y1].
     :type y_true: tensorflow.Tensor
+    :param y_pred: Predicted bounding box with format [x0, y0, x1, y1].
+    :type y_pred: tensorflow.Tensor
     :return: Intersection over union between y_pred and y_true
     :rtype: tensorflow.Tensor
     """
@@ -45,19 +45,19 @@ def boxes_iou(y_pred, y_true):
     return iou, union
 
 
-def boxes_giou(y_pred, y_true):
+def boxes_giou(y_true, y_pred):
     """
     Computes Generalized IOU between predicted bounding boxes and ground truth bounding boxes.
     The bounding boxes are expected to have format [x0, y0, x1, y1].
 
-    :param y_pred: Predicted bounding box with format [x0, y0, x1, y1].
-    :type y_pred: tensorflow.Tensor
     :param y_true: Ground truth bounding box with format [x0, y0, x1, y1].
     :type y_true: tensorflow.Tensor
+    :param y_pred: Predicted bounding box with format [x0, y0, x1, y1].
+    :type y_pred: tensorflow.Tensor
     :return: Generalized intersection over union between y_pred and y_true
     :rtype: tensorflow.Tensor
     """
-    iou, union = boxes_iou(y_pred, y_true)
+    iou, union = boxes_iou(y_true, y_pred)
 
     left_bottom = tf.minimum(y_pred[:, None, :2], y_true[:, :2])
     right_top = tf.maximum(y_pred[:, None, 2:], y_true[:, 2:])
@@ -227,3 +227,10 @@ def get(identifier):
         raise ValueError("Argument 'identifier' must be type string.")
 
     return f
+
+
+def absolute2relative(boxes, img_size):
+    width, height = img_size
+    scale = tf.constant([width, height, width, height], dtype=tf.float32)
+    boxes *= scale
+    return boxes

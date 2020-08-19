@@ -1,4 +1,4 @@
-tensorflow-gpu
+tensorflow-gpu==2.2.0
 matplotlib
 numpy
 git+https://github.com/cocodataset/cocoapi.git#subdirectory=PythonAPI

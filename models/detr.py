@@ -1,12 +1,15 @@
 import pickle
+
 import tensorflow as tf
 from tensorflow.keras.layers import Conv2D, ReLU
 
+from chambers.layers import DownsampleMasking
+from chambers.utils.boxes import box_cxcywh_to_xyxy
+from chambers.utils.tf import set_supports_masking
 from .backbone import ResNet50Backbone
 from .custom_layers import Linear
 from .position_embeddings import PositionEmbeddingSine
 from .transformer import Transformer
-from utils import cxcywh2xyxy
 
 
 class DETR(tf.keras.Model):
@@ -15,12 +18,14 @@ class DETR(tf.keras.Model):
                  backbone=None,
                  pos_encoder=None,
                  transformer=None,
+                 return_decode_sequence=False,
                  **kwargs):
         super().__init__(**kwargs)
         self.num_queries = num_queries
 
         self.mask_layer = tf.keras.layers.Masking(mask_value=mask_value)
         self.backbone = backbone or ResNet50Backbone(name='backbone/0/body')
+        self.downsample_mask = DownsampleMasking()
         self.transformer = transformer or Transformer(return_intermediate_dec=True,
                                                       name='transformer')
         self.model_dim = self.transformer.model_dim
@@ -44,58 +49,51 @@ class DETR(tf.keras.Model):
             Linear(4, name='layers/2')
         ], name='bbox_embed')
 
+        self.return_decode_sequence = return_decode_sequence
 
-    def call(self, inp, training=False, post_process=False):
-        x, masks = inp
-        x = self.backbone(x, training=training)
-        masks = self.downsample_masks(masks, x)
-        pos_encoding = self.pos_encoder(masks)
+        # Make every layer propagate the mask unchanged by default
+        set_supports_masking(self, verbose=False)
 
-        hs = self.transformer(self.input_proj(x), masks, self.query_embed,
+    def call(self, inputs, training=False, post_process=False):
+        # inputs shape [batch_size, img_h, img_w, c]
+        x = self.mask_layer(inputs)  # [batch_size, img_h, img_w, c]
+        x = self.backbone(x, training=training)  # [batch_size, h, w, 2048]
+        x = self.downsample_mask(x)  # [batch_size, h, w, 2048]
+        pos_encoding = self.pos_encoder(x)  # [batch_size, h, w, model_dim]
+
+        x = self.input_proj(x)  # [batch_size, h, w, model_dim]
+        hs = self.transformer(x, tf.logical_not(x._keras_mask),
+                              self.query_embed,
                               pos_encoding, training=training)[0]
+        # [n_decoder_layers, batch_size, num_queries, model_dim]
 
-        outputs_class = self.class_embed(hs)
-        outputs_coord = tf.sigmoid(self.bbox_embed(hs))
+        class_pred = self.class_embed(hs)  # [n_decoder_layers, batch_size, num_queries, num_classes]
+        box_pred = tf.sigmoid(self.bbox_embed(hs))  # [n_decoder_layers, batch_size, num_queries, 4]
 
-        output = {'pred_logits': outputs_class[-1],
-                  'pred_boxes': outputs_coord[-1]}
+        # get predictions from last decoder layer
+        if self.return_decode_sequence:
+            class_pred = tf.transpose(class_pred, [1, 0, 2, 3])  # [batch_size, n_decoder_layers, num_queries, num_classes]
+            box_pred = tf.transpose(box_pred, [1, 0, 2, 3])  # [batch_size, n_decoder_layers, num_queries, 4]
+        else:
+            class_pred = class_pred[-1]  # [batch_size, num_queries, num_classes]
+            box_pred = box_pred[-1]  # [batch_size, num_queries, 4]
 
-        if post_process:
-            output = self.post_process(output)
-        return output
-
+        return tf.concat([box_pred, class_pred], axis=-1)
 
     def build(self, input_shape=None, **kwargs):
         if input_shape is None:
-            input_shape = [(None, None, None, 3), (None, None, None)]
+            input_shape = (None, None, None, 3)
         super().build(input_shape, **kwargs)
 
+    def post_process(self, y_pred):
+        boxes = y_pred[..., :4]
+        logits = y_pred[..., 4:]
 
-    def downsample_masks(self, masks, x):
-        masks = tf.cast(masks, tf.int32)
-        masks = tf.expand_dims(masks, -1)
-        # The existing tf.image.resize with method='nearest'
-        # does not expose the half_pixel_centers option in TF 2.2.0
-        # The original Pytorch F.interpolate uses it like this
-        masks = tf.compat.v1.image.resize_nearest_neighbor(
-            masks, tf.shape(x)[1:3], align_corners=False, half_pixel_centers=False)
-        masks = tf.squeeze(masks, -1)
-        masks = tf.cast(masks, tf.bool)
-        return masks
-
-
-    def post_process(self, output):
-        logits, boxes = [output[k] for k in ['pred_logits', 'pred_boxes']]
-        
         probs = tf.nn.softmax(logits, axis=-1)[..., :-1]
         scores = tf.reduce_max(probs, axis=-1)
         labels = tf.argmax(probs, axis=-1)
-        boxes = cxcywh2xyxy(boxes)
-
-        output = {'scores': scores,
-                  'labels': labels,
-                  'boxes': boxes}
-        return output
+        boxes = box_cxcywh_to_xyxy(boxes)
+        return scores, boxes, labels
 
     def load_from_pickle(self, pickle_file, verbose=False):
         with open(pickle_file, 'rb') as f:
@@ -105,4 +103,3 @@ class DETR(tf.keras.Model):
             if verbose:
                 print('Loading', var.name)
             var = var.assign(detr_weights[var.name[:-2]])
-

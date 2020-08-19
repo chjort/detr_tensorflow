@@ -2,7 +2,8 @@ import tensorflow as tf
 from tensorflow.keras.layers import ZeroPadding2D, Conv2D, ReLU, MaxPool2D
 
 from .custom_layers import FrozenBatchNorm2D
-
+from chambers.layers import DownsampleMasking
+from chambers.utils.tf import set_supports_masking
 
 class ResNetBase(tf.keras.Model):
     def __init__(self, **kwargs):

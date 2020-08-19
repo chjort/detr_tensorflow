@@ -18,11 +18,14 @@ class PositionEmbeddingSine(tf.keras.Model):
         self.scale = scale
         self.eps = eps
 
+    def call(self, inputs, **kwargs):
+        if inputs._keras_mask is not None:
+            ones = tf.cast(inputs._keras_mask, tf.float32)
+        else:
+            ones = tf.ones(tf.shape(inputs)[:-1], dtype=tf.float32)  # shape [batch_size, h, w]
 
-    def call(self, mask):
-        not_mask = tf.cast(~mask, tf.float32)
-        y_embed = tf.math.cumsum(not_mask, axis=1)
-        x_embed = tf.math.cumsum(not_mask, axis=2)
+        y_embed = tf.math.cumsum(ones, axis=1)
+        x_embed = tf.math.cumsum(ones, axis=2)
 
         if self.normalize:
             y_embed = y_embed / (y_embed[:, -1:, :] + self.eps) * self.scale
@@ -33,13 +36,12 @@ class PositionEmbeddingSine(tf.keras.Model):
 
         pos_x = x_embed[..., tf.newaxis] / dim_t
         pos_y = y_embed[..., tf.newaxis] / dim_t
-        
+
         pos_x = tf.stack([tf.math.sin(pos_x[..., 0::2]),
                           tf.math.cos(pos_x[..., 1::2])], axis=4)
 
         pos_y = tf.stack([tf.math.sin(pos_y[..., 0::2]),
                           tf.math.cos(pos_y[..., 1::2])], axis=4)
-        
 
         shape = [tf.shape(pos_x)[i] for i in range(3)] + [-1]
         pos_x = tf.reshape(pos_x, shape)

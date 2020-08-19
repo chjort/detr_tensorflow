@@ -3,8 +3,8 @@ from os import path
 import tensorflow as tf
 
 from models import build_detr_resnet50
-from utils import read_jpeg, preprocess_image, absolute2relative, plot_results
-
+from utils import read_jpeg, preprocess_image, plot_results
+from chambers.utils.boxes import absolute2relative
 
 # %%
 detr = build_detr_resnet50()
