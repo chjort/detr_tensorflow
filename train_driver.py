@@ -4,23 +4,14 @@ from chambers.losses import HungarianLoss
 from chambers.utils.boxes import absolute2relative
 from chambers.utils.masking import remove_padding_image
 from models import build_detr_resnet50
-from tf_datasets import load_coco, load_coco_tf
+from tf_datasets import load_coco_tf, load_coco
 from utils import denormalize_image, plot_results
 
-
-def loss_placeholder(y_true, y_pred):
-    y_true_labels = y_true[..., -1]  # [1]
-    y_pred_logits = y_pred[..., 4:]  # [1]
-    y_pred = y_pred_logits[:, :1, :]
-    y_true = tf.one_hot(tf.cast(y_true_labels, tf.int32), depth=92)[:, :1, :]
-    return tf.keras.losses.categorical_crossentropy(y_true, y_pred, from_logits=True)
-
-
-BATCH_SIZE = 1
-
 # %%
-dataset, N = load_coco_tf("train", BATCH_SIZE)
+BATCH_SIZE = 2
+# dataset, N = load_coco_tf("train", BATCH_SIZE)
 # dataset, N = load_coco("/datadrive/crr/datasets/coco", "train", BATCH_SIZE)
+dataset, N = load_coco("/home/ch/datasets/coco", "train", BATCH_SIZE)
 
 # %%
 decode_sequence = False
@@ -65,9 +56,8 @@ from chambers.augmentations import random_size_crop
 
 xr, yr = random_size_crop(x[0], y[0][:, :4], min_size=128, max_size=500)
 
-
 # %%
-y_pred = detr(x)
+y_pred = detr.predict(x)
 print("PRED:", y_pred.shape)
 
 # %%

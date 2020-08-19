@@ -23,6 +23,9 @@ class HungarianLoss(tf.keras.losses.Loss):
         self.bbox_loss_weight = 5
         self.giou_loss_weight = 2
 
+        self.lsa_losses = [pairwise_softmax, pairwise_l1, pairwise_giou]
+        self.lsa_loss_weights = [1, 5, 2]
+
         if sequence_input:
             self.input_signature = [tf.TensorSpec(shape=(None, None, 5), dtype=tf.float32),
                                     tf.TensorSpec(shape=(None, None, None, None), dtype=tf.float32)]
@@ -34,49 +37,38 @@ class HungarianLoss(tf.keras.losses.Loss):
         super().__init__(reduction=tf.keras.losses.Reduction.NONE, name=name)
 
     def call(self, y_true, y_pred):
-        y_true_boxes = y_true[..., :-1]  # [0]
-        y_true_labels = y_true[..., -1]  # [1]
-        y_pred_boxes = y_pred[..., :4]  # [0]
-        y_pred_logits = y_pred[..., 4:]  # [1]
-
         if self.sequence_input:
-            tf.assert_rank(y_pred_boxes, 4, "Invalid input shape.")
-            tf.assert_rank(y_pred_logits, 4, "Invalid input shape.")
+            tf.assert_rank(y_pred, 4, "Invalid input shape.")
 
-            seq_len = tf.shape(y_pred_logits)[1]
+            seq_len = tf.shape(y_pred)[1]
             loss = tf.constant(0, tf.float32)
             for i in tf.range(seq_len):
-                y_pred_logits_i = y_pred_logits[:, i, :, :]
-                y_pred_boxes_i = y_pred_boxes[:, i, :, :]
-                loss_i = self._compute_loss(y_true_labels, y_true_boxes, y_pred_logits_i, y_pred_boxes_i)
+                y_pred_i = y_pred[:, i, :, :]
+                loss_i = self._compute_loss(y_true, y_pred_i)
                 loss = loss + loss_i
         else:
-            loss = self._compute_loss(y_true_labels, y_true_boxes, y_pred_logits, y_pred_boxes)
+            loss = self._compute_loss(y_true, y_pred)
 
         return loss
 
-    def _compute_loss(self, y_true_labels, y_true_boxes, y_pred_logits, y_pred_boxes):
+    def _compute_loss(self, y_true, y_pred):
         """
 
-
-        :param y_true_labels: [batch_size, n_true_boxes]
-        :type y_true_labels:
-        :param y_true_boxes: [batch_size, n_true_boxes, 4]
-        :type y_true_boxes:
-        :param y_pred_logits: [batch_size, n_pred_boxes, n_classes]
-        :type y_pred_logits:
-        :param y_pred_boxes: [batch_size, n_pred_boxes, 4]
-        :type y_pred_boxes:
+        :param y_true: [batch_size, n_true_boxes, 5]
+        :type y_true:
+        :param y_pred: [batch_size, n_pred_boxes, 4 + n_classes]
+        :type y_pred:
         :return:
         :rtype:
         """
-        batch_size = tf.shape(y_pred_logits)[0]
-        n_pred_boxes = tf.shape(y_pred_logits)[1]
-        n_class = tf.shape(y_pred_logits)[2]
-        batch_mask = self._get_batch_mask(y_true_boxes)  # [batch_size, max_n_true_boxes_batch]
+
+        batch_size = tf.shape(y_true)[0]
+        n_pred_boxes = tf.shape(y_pred)[1]
+        n_class = tf.shape(y_pred)[2] - 4
+        batch_mask = self._get_batch_mask(y_true)  # [batch_size, max_n_true_boxes_batch]
 
         # cost_matrix (RaggedTensor) [batch_size, n_pred_boxes, None]
-        cost_matrix = self._compute_cost_matrix(y_true_labels, y_true_boxes, y_pred_logits, y_pred_boxes, batch_mask)
+        cost_matrix = self._compute_cost_matrix(y_true, y_pred, batch_mask)  # TODO: input format
 
         # Ignore cost matrices that are all NaN.
         nan_matrices = tf.reduce_all(tf.math.is_nan(cost_matrix), axis=(1, 2))
@@ -92,10 +84,15 @@ class HungarianLoss(tf.keras.losses.Loss):
 
         lsa = batch_linear_sum_assignment(cost_matrix)  # [n_true_boxes, 2]
 
-        prediction_indices, target_indices = self._lsa_to_gather_indices(lsa,
-                                                                         batch_mask)  # ([n_true_boxes, 2], [n_true_boxes, 2])
+        prediction_indices, target_indices = self._lsa_to_batch_indices(lsa, batch_mask)
+        # ([n_true_boxes, 2], [n_true_boxes, 2])
 
         # get assigned targets
+        y_true_boxes = y_true[..., :-1]  # [0]
+        y_true_labels = y_true[..., -1]  # [1]
+        y_pred_boxes = y_pred[..., :4]  # [0]
+        y_pred_logits = y_pred[..., 4:]  # [1]
+
         y_true_boxes_lsa = tf.gather_nd(y_true_boxes, target_indices)  # [n_true_boxes, 4]
         y_true_labels_lsa = tf.gather_nd(y_true_labels, target_indices)
         no_class_labels = tf.cast(tf.fill([batch_size, n_pred_boxes], n_class - 1), tf.float32)
@@ -112,45 +109,37 @@ class HungarianLoss(tf.keras.losses.Loss):
         loss = loss_ce + loss_l1 + loss_giou
         return loss
 
-    def _compute_cost_matrix(self, y_true_logits, y_true_boxes, y_pred_logits, y_pred_boxes, batch_mask):
-        batch_size = tf.shape(y_pred_logits)[0]
-        n_pred_boxes = tf.shape(y_pred_logits)[1]
-
-        cost_class = pairwise_softmax(y_true_logits, y_pred_logits)
-        cost_bbox = pairwise_l1(y_true_boxes, y_pred_boxes)
-        cost_giou = pairwise_giou(y_true_boxes, y_pred_boxes)
-
-        cost_matrix = self.bbox_loss_weight * cost_bbox + self.class_loss_weight * cost_class + self.giou_loss_weight * cost_giou
-        cost_matrix = tf.reshape(cost_matrix, [batch_size, n_pred_boxes, -1])
+    def _compute_cost_matrix(self, y_true, y_pred, batch_mask):
+        cost_matrix = tf.math.add_n([loss_fn(y_true, y_pred) * loss_weight
+                                     for loss_fn, loss_weight in zip(self.lsa_losses, self.lsa_loss_weights)])
 
         cost_matrix_mask = self._compute_cost_matrix_mask(cost_matrix, batch_mask)
-
         cost_matrix_ragged = tf.ragged.boolean_mask(cost_matrix, cost_matrix_mask)
 
         return cost_matrix_ragged
 
-    def _compute_cost_matrix_mask(self, cost_matrix, batch_mask):
+    @staticmethod
+    def _compute_cost_matrix_mask(cost_matrix, batch_mask):
         batch_size = tf.shape(cost_matrix)[0]
         n_box = tf.shape(cost_matrix)[1]
         batch_mask_flat = tf.reshape(batch_mask, [-1])
 
         mask_mask = tf.repeat(tf.eye(batch_size, batch_size), tf.shape(batch_mask)[1])
-        C_mask = tf.cast(tf.tile(batch_mask_flat, [batch_size]), tf.float32) * tf.cast(mask_mask, tf.float32)
-        C_mask = tf.cast(tf.reshape(C_mask, [batch_size, -1]), tf.bool)
-        C_mask = tf.tile(tf.expand_dims(C_mask, 1), [1, n_box, 1])
-        return C_mask
+        cost_matrix_mask = tf.cast(tf.tile(batch_mask_flat, [batch_size]), tf.float32) * tf.cast(mask_mask, tf.float32)
+        cost_matrix_mask = tf.cast(tf.reshape(cost_matrix_mask, [batch_size, -1]), tf.bool)
+        cost_matrix_mask = tf.tile(tf.expand_dims(cost_matrix_mask, 1), [1, n_box, 1])
+        return cost_matrix_mask
 
-    def _get_batch_mask(self, x_padded):
+    def _get_batch_mask(self, y_true):
         """
-
-        :param x_padded:
-        :type x_padded:
-        :return: [batch_size, x_padded.shape[0]]
+        :param y_true:
+        :return: [batch_size, y_true.shape[0]]
         :rtype:
         """
-        return tf.reduce_all(tf.not_equal(x_padded, self.mask_value), -1)
+        return tf.reduce_all(tf.not_equal(y_true, self.mask_value), -1)
 
-    def _lsa_to_gather_indices(self, lsa_indices, batch_mask):
+    @staticmethod
+    def _lsa_to_batch_indices(lsa_indices, batch_mask):
         sizes = tf.reduce_sum(tf.cast(batch_mask, tf.int32), axis=1)
         row_idx = repeat_indices(sizes)
         row_idx = tf.tile(tf.expand_dims(row_idx, -1), [1, 2])
@@ -163,57 +152,73 @@ class HungarianLoss(tf.keras.losses.Loss):
 
 def pairwise_giou(y_true, y_pred):
     """
-    (batch_size, n_true_boxes, 4), (batch_size, n_pred_boxes, 4)
+    :param y_true: (batch_size, n_true_boxes, 5)
+    :param y_pred: (batch_size, n_pred_boxes, 4 + n_classes)
+    :return: [batch_size * n_pred_boxes, batch_size * n_true_boxes]
     """
 
-    box_shape = tf.shape(y_pred)[-1]
-    y_pred = tf.reshape(y_pred, [-1, box_shape])
+    y_true = y_true[..., :-1]  # [batch_size, n_true_boxes, 4]
+    y_pred = y_pred[..., :4]  # [batch_size, n_pred_boxes, 4]
+    batch_size = tf.shape(y_true)[0]
+    n_pred_boxes = tf.shape(y_pred)[1]
 
-    y_true = tf.reshape(y_true, [-1, tf.shape(y_true)[-1]])
+    y_pred = tf.reshape(y_pred, [-1, 4])  # [batch_size * n_pred_boxes, 4]
+    y_true = tf.reshape(y_true, [-1, 4])  # [batch_size * n_true_boxes, 4]
 
     # giou cost
     y_true = box_cxcywh_to_xyxy(y_true)  # TODO: Remove these box conversions. Assume the format at input.
     y_pred = box_cxcywh_to_xyxy(y_pred)
     cost_giou = -boxes_giou(y_true, y_pred)
+    cost_giou = tf.reshape(cost_giou, [batch_size, n_pred_boxes, -1])
     return cost_giou
 
 
 def pairwise_l1(y_true, y_pred):
     """
-    (batch_size, n_true_boxes, 4), (batch_size, n_pred_boxes, 4)
+    :param y_true: (batch_size, n_true_boxes, 5)
+    :param y_pred: (batch_size, n_pred_boxes, 4 + n_classes)
+    :return: [batch_size * n_pred_boxes, batch_size * n_true_boxes]
     """
 
-    box_shape = tf.shape(y_pred)[-1]
-    y_pred = tf.reshape(y_pred, [-1, box_shape])
+    y_true = y_true[..., :-1]  # [batch_size, n_true_boxes, 4]
+    y_pred = y_pred[..., :4]  # [batch_size, n_pred_boxes, 4]
+    batch_size = tf.shape(y_true)[0]
+    n_pred_boxes = tf.shape(y_pred)[1]
 
-    y_true = tf.reshape(y_true, [-1, tf.shape(y_true)[-1]])
+    y_pred = tf.reshape(y_pred, [-1, 4])  # [batch_size * n_pred_boxes, 4]
+    y_true = tf.reshape(y_true, [-1, 4])  # [batch_size * n_true_boxes, 4]
 
     # bbox cost
     cost_bbox = _pairwise_l1(y_pred, y_true)
+    cost_bbox = tf.reshape(cost_bbox, [batch_size, n_pred_boxes, -1])
     return cost_bbox
 
 
 def pairwise_softmax(y_true, y_pred):
     """
-    (batch_size, n_true_boxes), (batch_size, n_pred_boxes, n_classes)
+    :param y_true: (batch_size, n_true_boxes, 5)
+    :param y_pred: (batch_size, n_pred_boxes, 4 + n_classes)
+    :return: [batch_size * n_pred_boxes, batch_size * n_true_boxes]
     """
 
+    y_true = y_true[..., -1]  # [batch_size, n_true_boxes]
+    y_pred = y_pred[..., 4:]  # [batch_size, n_pred_boxes, n_classes]
+    batch_size = tf.shape(y_true)[0]
+    n_pred_boxes = tf.shape(y_pred)[1]
     n_class = tf.shape(y_pred)[2]
 
     # labels
     y_pred = tf.reshape(y_pred, [-1, n_class])
     y_pred = tf.nn.softmax(y_pred, axis=-1)
-
     y_true = tf.reshape(y_true, [-1])
 
-    # logits cost
-    # NOTE: tf.gather does not take indices that are out of bounds when using CPU. So make sure to convert out of bounds
-    #   indices to 0.
+    # tf.gather does not take indices that are out of bounds when using CPU. So converting out of bounds indices to 0.
     n_pred = tf.cast(tf.shape(y_pred)[0], y_true.dtype)
     y_true = tf.where(tf.greater(y_true, n_pred), tf.zeros_like(y_true), y_true)
     y_true = tf.where(tf.less(y_true, 0), tf.zeros_like(y_true), y_true)
 
     cost_class = -tf.gather(y_pred, tf.cast(y_true, tf.int32), axis=1)
+    cost_class = tf.reshape(cost_class, [batch_size, n_pred_boxes, -1])
     return cost_class
 
 

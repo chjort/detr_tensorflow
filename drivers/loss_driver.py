@@ -85,7 +85,7 @@ batch_mask = hungarian._get_batch_mask(y_true_boxes)
 cost_matrix = hungarian._compute_cost_matrix(y_true_logits, y_true_boxes, y_pred_logits, y_pred_boxes, batch_mask)
 cost_matrix.bounding_shape()
 lsa = batch_linear_sum_assignment(cost_matrix)
-prediction_indices, target_indices = hungarian._lsa_to_gather_indices(lsa, batch_mask)
+prediction_indices, target_indices = hungarian._lsa_to_batch_indices(lsa, batch_mask)
 # get assigned targets
 y_true_logits_lsa = tf.gather_nd(y_true_logits, target_indices)
 y_true_boxes_lsa = tf.gather_nd(y_true_boxes, target_indices)

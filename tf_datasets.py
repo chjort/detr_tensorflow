@@ -1,5 +1,5 @@
 import tensorflow as tf
-import tensorflow_datasets as tfds
+# import tensorflow_datasets as tfds
 
 from chambers.augmentations import random_resize_min, box_normalize_cxcywh, box_denormalize_yxyx, flip_left_right
 from chambers.utils.boxes import box_yxyx_to_cxcywh, box_xywh_to_yxyx
@@ -8,8 +8,6 @@ from utils import normalize_image, read_jpeg
 
 
 def augment(img, boxes, labels):
-    # TODO: Random Horizontal Flip
-
     img, boxes = tf.cond(tf.random.uniform([1], 0, 1) > 0.5,
                          true_fn=lambda: flip_left_right(img, boxes),
                          false_fn=lambda: (img, boxes)
