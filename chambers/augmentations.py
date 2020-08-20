@@ -4,13 +4,42 @@ from chambers.utils.tf import resize as _resize
 
 
 def random_size_crop(img, boxes, min_size, max_size):
+    """
+
+    :param img:
+    :type img:
+    :param boxes: 2-D Tensor of shape (box_number, 4) containing bounding boxes in format [y0, x0, y0, x0] with values
+        between 0 and 1.
+    :type boxes:
+    :param min_size:
+    :type min_size:
+    :param max_size:
+    :type max_size:
+    :return:
+    :rtype:
+    """
     hw = tf.random.uniform([2], min_size, max_size + 1, dtype=tf.int32)
     h = hw[0]
     w = hw[1]
 
-    img = tf.image.random_crop(img, (h, w, 3))
+    input_shape = tf.shape(img)
+    ylim = input_shape[0] - h
+    xlim = input_shape[1] - w
+    y0 = tf.random.uniform([], 0, ylim, dtype=tf.int32)
+    x0 = tf.random.uniform([], 0, xlim, dtype=tf.int32)
 
-    # TODO: Crop boxes
+    img = tf.image.crop_to_bounding_box(img, y0, x0, h, w)
+
+    img_h = input_shape[0]
+    img_w = input_shape[1]
+    y0_n = y0 / img_h
+    x0_n = x0 / img_w
+    h_n = h / img_h
+    w_n = w / img_w
+
+    boxes = _clip_bboxes(boxes, y0_n, x0_n, h_n, w_n)
+    boxes = tf.ragged.boolean_mask(boxes, tf.not_equal(boxes[:, 0], boxes[:, 2]))  #TODO: This does not work with tf.data
+    boxes = tf.ragged.boolean_mask(boxes, tf.not_equal(boxes[:, 1], boxes[:, 3]))
 
     return img, boxes
 
@@ -215,3 +244,25 @@ def _box_denormalize_yxyx(boxes, img_h, img_w):
 
     boxes = boxes * tf.cast(tf.stack([img_h, img_w, img_h, img_w]), tf.float32)  # boxes * [h, w, h, w]
     return boxes
+
+
+def _clip_bboxes(bboxes_relative, new_miny, new_minx, new_height, new_width):
+    """
+    Calculates new coordinates for given bounding boxes given the cut area of an image.
+    :param boxes: 2-D Tensor of shape (box_number, 4) containing bounding boxes in format [y0, x0, y0, x0] with values
+        between 0 and 1.
+    :param new_miny: Relative clipping coordinate.
+    :param new_minx: Relative clipping coordinate.
+    :param new_height: Relative clipping coordinate.
+    :param new_width: Relative clipping coordinate.
+    :return: clipped bounding boxes
+    """
+    # move the coordinates according to new min value
+    bboxes_move_min = tf.stack([new_miny, new_minx, new_miny, new_minx])
+    bboxes = bboxes_relative - tf.cast(bboxes_move_min, bboxes_relative.dtype)
+
+    # if we use relative coordinates, we have to scale the coordinates to be between 0 and 1 again
+    bboxes_scale = tf.stack([new_height, new_width, new_height, new_width])
+    bboxes = bboxes / tf.cast(bboxes_scale, dtype=bboxes.dtype)
+    bboxes = tf.clip_by_value(bboxes, 0, 1)
+    return bboxes

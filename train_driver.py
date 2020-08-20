@@ -1,17 +1,16 @@
 import tensorflow as tf
-
 from chambers.losses import HungarianLoss, pairwise_softmax, pairwise_l1, pairwise_giou
 from chambers.utils.boxes import absolute2relative
 from chambers.utils.masking import remove_padding_image
 from models import build_detr_resnet50
 from tf_datasets import load_coco
-from utils import denormalize_image, plot_results
+from utils import denormalize_image, plot_results, plot_img_boxes_cxcywh, plot_img_boxes_yxyx
 
 # %%
-BATCH_SIZE = 2
+BATCH_SIZE = 1
 # dataset, N = load_coco_tf("train", BATCH_SIZE)
 # dataset, N = load_coco("/datadrive/crr/datasets/coco", "train", BATCH_SIZE)
-dataset, N = load_coco("/home/ch/datasets/coco", "train", BATCH_SIZE)
+dataset, N = load_coco("/home/ch/datasets/coco", "val", BATCH_SIZE)
 
 # %%
 decode_sequence = False
@@ -55,11 +54,6 @@ print("Y SHAPE:", y.shape)
 # n_xpad = tf.reduce_sum(tf.cast(tf.equal(x[:, 0, :, 0], -1.), tf.float32), axis=1)
 
 # %%
-from chambers.augmentations import random_size_crop
-
-xr, yr = random_size_crop(x[0], y[0][:, :4], min_size=128, max_size=500)
-
-# %%
 y_pred = detr.predict(x)
 print("PRED:", y_pred.shape)
 
@@ -93,22 +87,18 @@ x_v = denormalize_image(x_v)
 plot_results(x_v.numpy(), labels_v, scores, boxes_v)
 
 # %% Show ground truth
-from chambers.utils.boxes import box_cxcywh_to_yxyx
-import matplotlib.pyplot as plt
-
 i = 0
+img = denormalize_image(x[0])
+boxes = y[..., :4][0]
 
-x_v = denormalize_image(x)
-boxes = y[..., :4]
-boxes_viz = box_cxcywh_to_yxyx(boxes)
-# boxes_viz = boxes
-x_v = x_v[i]
-boxes_viz = boxes_viz[i]
+plot_img_boxes_cxcywh(img, boxes)
 
-colors = [[1.0, 0., 0.]]
-box_img = tf.image.draw_bounding_boxes([x_v], [boxes_viz], colors)
-box_img = tf.cast(box_img, tf.uint8)
-box_img = box_img[0]
+# %%
+from chambers.augmentations import random_size_crop
+from chambers.utils.boxes import box_cxcywh_to_yxyx
 
-plt.imshow(box_img.numpy())
-plt.show()
+x_ = x[0]
+y_ = box_cxcywh_to_yxyx(y[0, ..., :4])
+
+xr, yr = random_size_crop(x_, y_, min_size=128, max_size=500)
+plot_img_boxes_yxyx(denormalize_image(xr), yr)
