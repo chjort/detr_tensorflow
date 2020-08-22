@@ -3,13 +3,37 @@ import tensorflow as tf
 from chambers.utils.tf import resize as _resize
 
 
-def random_size_crop(img, boxes, min_size, max_size):
+def random_size_crop(img, boxes, labels, min_size, max_size):
+    img_shape = tf.shape(img)
+    img_h = img_shape[0]
+    img_w = img_shape[0]
+    img_area = img_h * img_w
+
+    hw = tf.random.uniform([2], min_size, max_size + 1, dtype=tf.int32)
+    h = hw[0]
+    w = hw[1]
+
+    min_dim = tf.minimum(h, w)
+    max_dim = tf.maximum(h, w)
+    aspect_ratio = [min_dim / max_dim, max_dim / min_dim]
+
+    crop_area = h * w
+    area_ratio = crop_area / img_area
+
+    begin, size, bboxes = tf.image.sample_distorted_bounding_box(img_shape, [boxes],
+                                                                 min_object_covered=0.1,
+                                                                 aspect_ratio_range=aspect_ratio,
+                                                                 area_range=[area_ratio, area_ratio + 0.005]
+                                                                 )
+    return begin, size, bboxes
+
+
+def random_size_crop_ch(img, boxes, min_size, max_size):
     """
 
     :param img:
     :type img:
-    :param boxes: 2-D Tensor of shape (box_number, 4) containing bounding boxes in format [y0, x0, y0, x0] with values
-        between 0 and 1.
+    :param boxes: 2-D Tensor of shape (box_number, 4) containing bounding boxes in format [y0, x0, y0, x0]
     :type boxes:
     :param min_size:
     :type min_size:
@@ -23,12 +47,13 @@ def random_size_crop(img, boxes, min_size, max_size):
     w = hw[1]
 
     input_shape = tf.shape(img)
+
+    # TODO: Crop such that there is always a bounding box in the crop
+    #   or filter empty boxes in dataset iterator
     ylim = input_shape[0] - h
     xlim = input_shape[1] - w
     y0 = tf.random.uniform([], 0, ylim, dtype=tf.int32)
     x0 = tf.random.uniform([], 0, xlim, dtype=tf.int32)
-
-    img = tf.image.crop_to_bounding_box(img, y0, x0, h, w)
 
     img_h = input_shape[0]
     img_w = input_shape[1]
@@ -37,11 +62,17 @@ def random_size_crop(img, boxes, min_size, max_size):
     h_n = h / img_h
     w_n = w / img_w
 
-    boxes = _clip_bboxes(boxes, y0_n, x0_n, h_n, w_n)
-    boxes = tf.ragged.boolean_mask(boxes, tf.not_equal(boxes[:, 0], boxes[:, 2]))  #TODO: This does not work with tf.data
-    boxes = tf.ragged.boolean_mask(boxes, tf.not_equal(boxes[:, 1], boxes[:, 3]))
+    boxes = box_normalize_yxyx(boxes, img)
 
-    return img, boxes
+    boxes_cropped = _clip_bboxes(boxes, y0_n, x0_n, h_n, w_n)
+    boxes_in_crop = _check_boxes_in_img(boxes_cropped)
+    boxes_in_crop.set_shape([None])
+    boxes_cropped = tf.boolean_mask(boxes_cropped, boxes_in_crop)
+
+    img_cropped = tf.image.crop_to_bounding_box(img, y0, x0, h, w)
+    boxes_cropped = box_denormalize_yxyx(boxes_cropped, img_cropped)
+
+    return img_cropped, boxes_cropped
 
 
 @tf.function
@@ -266,3 +297,26 @@ def _clip_bboxes(bboxes_relative, new_miny, new_minx, new_height, new_width):
     bboxes = bboxes / tf.cast(bboxes_scale, dtype=bboxes.dtype)
     bboxes = tf.clip_by_value(bboxes, 0, 1)
     return bboxes
+
+
+@tf.function(input_signature=[tf.TensorSpec(shape=[None, 4], dtype=tf.float32)])
+def _check_boxes_in_img(boxes):
+    """
+
+    :param boxes:  2-D Tensor of shape (box_number, 4) containing bounding boxes in format [y0, x0, y0, x0] with values
+        between 0 and 1.
+    :return:
+    :rtype:
+    """
+    y_in_img = tf.logical_and(
+        tf.logical_or(boxes[:, 0] != 1, boxes[:, 0] != 0),
+        boxes[:, 0] != boxes[:, 2]
+    )
+
+    x_in_img = tf.logical_and(
+        tf.logical_or(boxes[:, 1] != 1, boxes[:, 1] != 0),
+        boxes[:, 1] != boxes[:, 3]
+    )
+
+    box_in_img = tf.logical_and(y_in_img, x_in_img)
+    return box_in_img

@@ -2,7 +2,7 @@ import tensorflow as tf
 # import tensorflow_datasets as tfds
 
 from chambers.augmentations import random_resize_min, box_normalize_cxcywh, box_denormalize_yxyx, flip_left_right, \
-    random_size_crop
+    random_size_crop_ch, box_normalize_yxyx
 from chambers.utils.boxes import box_yxyx_to_cxcywh, box_xywh_to_yxyx
 from datasets import CocoDetection
 from utils import normalize_image, read_jpeg
@@ -21,8 +21,9 @@ def augment(img, boxes, labels):
         return img, boxes
 
     def _fn2(img, boxes):
+        tf.print("fn2")
         img, boxes = random_resize_min(img, boxes, min_sides=[400, 500, 600], max_side=None)
-        img, boxes = random_size_crop(img, boxes, min_size=384, max_size=600)
+        img, boxes = random_size_crop_ch(img, boxes, min_size=384, max_size=600)
         img, boxes = random_resize_min(img, boxes, min_sides=min_sides, max_side=1333)
         return img, boxes
 
@@ -36,7 +37,8 @@ def augment(img, boxes, labels):
 
 def augment_val(img, boxes, labels):
     img, boxes = random_resize_min(img, boxes, min_sides=[800], max_side=1333)
-    # img, boxes, labels = augment(img, boxes, labels)
+    # img, boxes = random_size_crop(img, boxes, min_size=384, max_size=600)
+
     return img, boxes, labels
 
 
