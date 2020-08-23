@@ -12,6 +12,25 @@ BATCH_SIZE = 2
 dataset, N = load_coco("/home/ch/datasets/coco", "train", BATCH_SIZE)
 
 # %%
+it = iter(dataset)
+
+# %%
+x, y = next(it)
+print("X SHAPE:", x.shape)
+print("Y SHAPE:", y.shape)
+
+
+
+#%%
+i = 0
+img = denormalize_image(x[i])
+boxes = y[..., :4][i]
+plot_img_boxes_cxcywh(img, boxes)
+
+# n_ypad = tf.reduce_sum(tf.cast(tf.equal(x[:, :, 0, 0], -1.), tf.float32), axis=1)
+# n_xpad = tf.reduce_sum(tf.cast(tf.equal(x[:, 0, :, 0], -1.), tf.float32), axis=1)
+
+# %%
 decode_sequence = False
 detr = build_detr_resnet50(num_classes=91,
                            num_queries=100,
@@ -35,22 +54,6 @@ detr.fit(dataset,
          epochs=3,
          steps_per_epoch=50
          )
-
-# %%
-it = iter(dataset)
-
-# %%
-x, y = next(it)
-print("X SHAPE:", x.shape)
-print("Y SHAPE:", y.shape)
-
-i = 1
-img = denormalize_image(x[i])
-boxes = y[..., :4][i]
-plot_img_boxes_cxcywh(img, boxes)
-
-# n_ypad = tf.reduce_sum(tf.cast(tf.equal(x[:, :, 0, 0], -1.), tf.float32), axis=1)
-# n_xpad = tf.reduce_sum(tf.cast(tf.equal(x[:, 0, :, 0], -1.), tf.float32), axis=1)
 
 # %%
 y_pred = detr.predict(x)
