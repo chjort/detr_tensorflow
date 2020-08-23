@@ -3,7 +3,7 @@ import tensorflow as tf
 from chambers.utils.tf import resize as _resize
 
 
-def random_size_crop(img, boxes, labels, min_size, max_size):
+def random_size_crop_WIP(img, boxes, labels, min_size, max_size):
     img_shape = tf.shape(img)
     img_h = img_shape[0]
     img_w = img_shape[0]
@@ -28,13 +28,23 @@ def random_size_crop(img, boxes, labels, min_size, max_size):
     return begin, size, bboxes
 
 
-def random_size_crop_ch(img, boxes, min_size, max_size):
+tf.function(input_signature=[
+    tf.TensorSpec([None, None, 3], dtype=tf.float32),
+    tf.TensorSpec([None, 4], dtype=tf.float32),
+    tf.TensorSpec([], dtype=tf.int32),
+    tf.TensorSpec([], dtype=tf.int32)
+])
+
+
+def random_size_crop(img, boxes, labels, min_size, max_size):
     """
 
     :param img:
     :type img:
     :param boxes: 2-D Tensor of shape (box_number, 4) containing bounding boxes in format [y0, x0, y0, x0]
     :type boxes:
+    :param labels: 2-D Tensor of shape (box_number, 1) containing class labels for each box.
+    :type labels:
     :param min_size:
     :type min_size:
     :param max_size:
@@ -42,37 +52,46 @@ def random_size_crop_ch(img, boxes, min_size, max_size):
     :return:
     :rtype:
     """
+
+    input_shape = tf.shape(img)
+    img_h = input_shape[0]
+    img_w = input_shape[1]
+
+    # TODO: Crop such that there is always a bounding box in the crop
+    #   or filter empty boxes in dataset iterator
+
     hw = tf.random.uniform([2], min_size, max_size + 1, dtype=tf.int32)
     h = hw[0]
     w = hw[1]
 
-    input_shape = tf.shape(img)
+    if h > img_h:
+        h = img_h
+        y0 = 0
+    else:
+        y0 = tf.random.uniform([], 0, img_h - h, dtype=tf.int32)
 
-    # TODO: Crop such that there is always a bounding box in the crop
-    #   or filter empty boxes in dataset iterator
-    ylim = input_shape[0] - h
-    xlim = input_shape[1] - w
-    y0 = tf.random.uniform([], 0, ylim, dtype=tf.int32)
-    x0 = tf.random.uniform([], 0, xlim, dtype=tf.int32)
+    if w > img_w:
+        w = img_w
+        x0 = 0
+    else:
+        x0 = tf.random.uniform([], 0, img_w - w, dtype=tf.int32)
 
-    img_h = input_shape[0]
-    img_w = input_shape[1]
     y0_n = y0 / img_h
     x0_n = x0 / img_w
     h_n = h / img_h
     w_n = w / img_w
 
     boxes = box_normalize_yxyx(boxes, img)
-
     boxes_cropped = _clip_bboxes(boxes, y0_n, x0_n, h_n, w_n)
-    boxes_in_crop = _check_boxes_in_img(boxes_cropped)
-    boxes_in_crop.set_shape([None])
-    boxes_cropped = tf.boolean_mask(boxes_cropped, boxes_in_crop)
+    zero_area_box = _zero_area_boxes_mask(boxes_cropped)
+
+    boxes_cropped = tf.boolean_mask(boxes_cropped, zero_area_box)
+    labels = tf.boolean_mask(labels, zero_area_box)
 
     img_cropped = tf.image.crop_to_bounding_box(img, y0, x0, h, w)
     boxes_cropped = box_denormalize_yxyx(boxes_cropped, img_cropped)
 
-    return img_cropped, boxes_cropped
+    return img_cropped, boxes_cropped, labels
 
 
 @tf.function
@@ -85,7 +104,6 @@ def flip_up_down(img, boxes):
     """
     h = tf.cast(tf.shape(img)[0], tf.float32)
     with tf.name_scope("flip_up_down"):
-        # bboxes = bboxes * tf.constant([-1, 1, -1, 1], dtype=tf.float32) + tf.stack([1.0, 0.0, 1.0, 0.0])
         boxes = boxes * tf.constant([-1, 1, -1, 1], dtype=tf.float32) + tf.stack([h, 0.0, h, 0.0])
         boxes = tf.stack([boxes[:, 2], boxes[:, 1], boxes[:, 0], boxes[:, 3]], axis=1)
 
@@ -104,7 +122,6 @@ def flip_left_right(img, boxes):
     """
     w = tf.cast(tf.shape(img)[1], tf.float32)
     with tf.name_scope("flip_left_right"):
-        # bboxes = bboxes * tf.constant([1, -1, 1, -1], dtype=tf.float32) + tf.stack([0.0, 1.0, 0.0, 1.0])
         boxes = boxes * tf.constant([1, -1, 1, -1], dtype=tf.float32) + tf.stack([0.0, w, 0.0, w])
         boxes = tf.stack([boxes[:, 0], boxes[:, 3], boxes[:, 2], boxes[:, 1]], axis=1)
 
@@ -277,30 +294,40 @@ def _box_denormalize_yxyx(boxes, img_h, img_w):
     return boxes
 
 
-def _clip_bboxes(bboxes_relative, new_miny, new_minx, new_height, new_width):
+def _clip_bboxes(boxes_relative, y0, x0, h, w):
     """
     Calculates new coordinates for given bounding boxes given the cut area of an image.
     :param boxes: 2-D Tensor of shape (box_number, 4) containing bounding boxes in format [y0, x0, y0, x0] with values
         between 0 and 1.
-    :param new_miny: Relative clipping coordinate.
-    :param new_minx: Relative clipping coordinate.
-    :param new_height: Relative clipping coordinate.
-    :param new_width: Relative clipping coordinate.
+    :param y0: Relative clipping coordinate.
+    :param x0: Relative clipping coordinate.
+    :param h: Relative clipping height.
+    :param w: Relative clipping width.
     :return: clipped bounding boxes
     """
     # move the coordinates according to new min value
-    bboxes_move_min = tf.stack([new_miny, new_minx, new_miny, new_minx])
-    bboxes = bboxes_relative - tf.cast(bboxes_move_min, bboxes_relative.dtype)
+    bboxes_move_min = tf.stack([y0, x0, y0, x0])
+    bboxes = boxes_relative - tf.cast(bboxes_move_min, boxes_relative.dtype)
 
     # if we use relative coordinates, we have to scale the coordinates to be between 0 and 1 again
-    bboxes_scale = tf.stack([new_height, new_width, new_height, new_width])
+    bboxes_scale = tf.stack([h, w, h, w])
     bboxes = bboxes / tf.cast(bboxes_scale, dtype=bboxes.dtype)
     bboxes = tf.clip_by_value(bboxes, 0, 1)
     return bboxes
 
 
+def _zero_area_boxes_mask(boxes):
+    boxes = tf.reshape(boxes, [-1, 2, 2])
+    zero_area_boxes = tf.reduce_all(boxes[:, 1, :] > boxes[:, 0, :], axis=1)
+    boxes = tf.reshape(boxes, [-1, 4])
+    zero_area_boxes.set_shape([None])
+
+    # boxes = tf.boolean_mask(boxes, zero_area_boxes)
+    return zero_area_boxes
+
+
 @tf.function(input_signature=[tf.TensorSpec(shape=[None, 4], dtype=tf.float32)])
-def _check_boxes_in_img(boxes):
+def _check_boxes_in_img_deprecated(boxes):
     """
 
     :param boxes:  2-D Tensor of shape (box_number, 4) containing bounding boxes in format [y0, x0, y0, x0] with values

@@ -2,7 +2,7 @@ import tensorflow as tf
 # import tensorflow_datasets as tfds
 
 from chambers.augmentations import random_resize_min, box_normalize_cxcywh, box_denormalize_yxyx, flip_left_right, \
-    random_size_crop_ch, box_normalize_yxyx
+    random_size_crop, box_normalize_yxyx
 from chambers.utils.boxes import box_yxyx_to_cxcywh, box_xywh_to_yxyx
 from datasets import CocoDetection
 from utils import normalize_image, read_jpeg
@@ -16,20 +16,20 @@ def augment(img, boxes, labels):
 
     min_sides = [480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800]
 
-    def _fn1(img, boxes):
+    def _fn1(img, boxes, labels):
         img, boxes = random_resize_min(img, boxes, min_sides=min_sides, max_side=1333)
-        return img, boxes
+        return img, boxes, labels
 
-    def _fn2(img, boxes):
+    def _fn2(img, boxes, labels):
         tf.print("fn2")
         img, boxes = random_resize_min(img, boxes, min_sides=[400, 500, 600], max_side=None)
-        img, boxes = random_size_crop_ch(img, boxes, min_size=384, max_size=600)
+        img, boxes, labels = random_size_crop(img, boxes, labels, min_size=384, max_size=600)
         img, boxes = random_resize_min(img, boxes, min_sides=min_sides, max_side=1333)
-        return img, boxes
+        return img, boxes, labels
 
-    img, boxes = tf.cond(tf.random.uniform([1], 0, 1) > 0.5,
-                         true_fn=lambda: _fn1(img, boxes),
-                         false_fn=lambda: _fn2(img, boxes)
+    img, boxes, labels = tf.cond(tf.random.uniform([1], 0, 1) > 0.5,
+                         true_fn=lambda: _fn1(img, boxes, labels),
+                         false_fn=lambda: _fn2(img, boxes, labels)
                          )
 
     return img, boxes, labels
@@ -37,7 +37,6 @@ def augment(img, boxes, labels):
 
 def augment_val(img, boxes, labels):
     img, boxes = random_resize_min(img, boxes, min_sides=[800], max_side=1333)
-    # img, boxes = random_size_crop(img, boxes, min_size=384, max_size=600)
 
     return img, boxes, labels
 
@@ -61,6 +60,8 @@ def load_coco(coco_path, split, batch_size):
         dataset = dataset.map(augment)
     else:
         dataset = dataset.map(augment_val)
+    dataset = dataset.filter(
+        lambda img_path, boxes, labels: tf.shape(boxes)[0] > 0)  # remove elements with no annotations
     dataset = dataset.map(normalize)
     dataset = dataset.map(lambda img, boxes, labels: (img, tf.concat([boxes, tf.expand_dims(labels, 1)], axis=1)))
 

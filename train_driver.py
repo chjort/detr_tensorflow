@@ -1,16 +1,15 @@
-import tensorflow as tf
 from chambers.losses import HungarianLoss, pairwise_softmax, pairwise_l1, pairwise_giou
 from chambers.utils.boxes import absolute2relative
 from chambers.utils.masking import remove_padding_image
 from models import build_detr_resnet50
 from tf_datasets import load_coco
-from utils import denormalize_image, plot_results, plot_img_boxes_cxcywh, plot_img_boxes_yxyx
+from utils import denormalize_image, plot_results, plot_img_boxes_cxcywh
 
 # %%
-BATCH_SIZE = 1
+BATCH_SIZE = 2
 # dataset, N = load_coco_tf("train", BATCH_SIZE)
 # dataset, N = load_coco("/datadrive/crr/datasets/coco", "train", BATCH_SIZE)
-dataset, N = load_coco("/home/ch/datasets/coco", "val", BATCH_SIZE)
+dataset, N = load_coco("/home/ch/datasets/coco", "train", BATCH_SIZE)
 
 # %%
 decode_sequence = False
@@ -32,11 +31,6 @@ detr.compile("adam",
              )
 
 # %% TRAIN
-# detr + loss_placeholder (no sequence) + 1 bsz + 800 min: 773, 707, 613 ms per step
-# detr + loss_placeholder (no sequence) + 2 bsz + 800 min: 1000+, 978, 976 ms per step
-
-# detr + hungarian (no sequence) + 1 bsz + 800 min: 778, 711, 618 ms per step
-
 detr.fit(dataset,
          epochs=3,
          steps_per_epoch=50
@@ -50,81 +44,13 @@ x, y = next(it)
 print("X SHAPE:", x.shape)
 print("Y SHAPE:", y.shape)
 
-# n_ypad = tf.reduce_sum(tf.cast(tf.equal(x[:, :, 0, 0], -1.), tf.float32), axis=1)
-# n_xpad = tf.reduce_sum(tf.cast(tf.equal(x[:, 0, :, 0], -1.), tf.float32), axis=1)
-
-# %% Show ground truth
-i = 0
-img = denormalize_image(x[0])
-boxes = y[..., :4][0]
-
+i = 1
+img = denormalize_image(x[i])
+boxes = y[..., :4][i]
 plot_img_boxes_cxcywh(img, boxes)
 
-# %%
-from chambers.augmentations import random_size_crop_ch, random_size_crop
-from chambers.utils.boxes import box_cxcywh_to_yxyx
-
-x_ = x[0]
-y_ = box_cxcywh_to_yxyx(y[0, ..., :4])
-l_ = y[0, ..., -1]
-
-# %%
-min_size = 128
-max_size = 500
-
-hw = tf.random.uniform([2], min_size, max_size + 1, dtype=tf.int32)
-h = hw[0]
-w = hw[1]
-
-input_shape = tf.shape(x_)
-ylim = input_shape[0] - h
-xlim = input_shape[1] - w
-y0 = tf.random.uniform([], 0, ylim, dtype=tf.int32)
-x0 = tf.random.uniform([], 0, xlim, dtype=tf.int32)
-
-img_h = input_shape[0]
-img_w = input_shape[1]
-y0_n = y0 / img_h
-x0_n = x0 / img_w
-h_n = h / img_h
-w_n = w / img_w
-
-# TODO: Crop such that there is always a bounding box in the crop
-
-
-# %%
-min_size = 128
-max_size = 500
-
-hw = tf.random.uniform([2], min_size, max_size + 1, dtype=tf.int32)
-h = hw[0]
-w = hw[1]
-
-min_dim = tf.minimum(h, w)
-max_dim = tf.maximum(h, w)
-aspect_ratio = [min_dim / max_dim, max_dim / min_dim]
-
-img_shape = tf.shape(x_)
-img_h = img_shape[0]
-img_w = img_shape[0]
-img_area = img_h * img_w
-crop_area = h * w
-area_ratio = crop_area / img_area
-
-y_b = tf.expand_dims(y_, 0)
-begin, size, bboxes = tf.image.sample_distorted_bounding_box(img_shape, [y_],
-                                                             min_object_covered=0.1,
-                                                             aspect_ratio_range=aspect_ratio,
-                                                             area_range=[0.1, 0.105]
-                                                             )
-
-begin, size, bboxes = random_size_crop(x_, y_, l_, 128, 500)
-plot_img_boxes_yxyx(denormalize_image(x_), bboxes[0])
-
-# %%
-xr, yr = random_size_crop_ch(x_, y_, min_size=128, max_size=500)
-xr.shape
-plot_img_boxes_yxyx(denormalize_image(xr), yr)
+# n_ypad = tf.reduce_sum(tf.cast(tf.equal(x[:, :, 0, 0], -1.), tf.float32), axis=1)
+# n_xpad = tf.reduce_sum(tf.cast(tf.equal(x[:, 0, :, 0], -1.), tf.float32), axis=1)
 
 # %%
 y_pred = detr.predict(x)
