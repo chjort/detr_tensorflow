@@ -56,12 +56,12 @@ def load_coco(coco_path, split, batch_size):
     dataset = dataset.map(
         lambda img_path, boxes, labels: (read_jpeg(img_path), box_xywh_to_yxyx(boxes), tf.cast(labels, tf.float32)))
     if split == "train":
-        dataset = dataset.cache("tf_data_cache/coco_train")
-        # dataset = dataset.repeat()
+        # dataset = dataset.cache("tf_data_cache/coco_train")
+        dataset = dataset.repeat()
         # dataset = dataset.shuffle(1024)
-        # dataset = dataset.map(augment)
+        dataset = dataset.map(augment)
     else:
-        dataset = dataset.cache("tf_data_cache/coco_val")
+        # dataset = dataset.cache("tf_data_cache/coco_val")
         dataset = dataset.map(augment_val)
     dataset = dataset.filter(
         lambda img_path, boxes, labels: tf.shape(boxes)[0] > 0)  # remove elements with no annotations

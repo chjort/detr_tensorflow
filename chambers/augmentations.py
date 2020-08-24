@@ -64,13 +64,13 @@ def random_size_crop(img, boxes, labels, min_size, max_size):
     h = hw[0]
     w = hw[1]
 
-    if h > img_h:
+    if h >= img_h:
         h = img_h
         y0 = 0
     else:
         y0 = tf.random.uniform([], 0, img_h - h, dtype=tf.int32)
 
-    if w > img_w:
+    if w >= img_w:
         w = img_w
         x0 = 0
     else:

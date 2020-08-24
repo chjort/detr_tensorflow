@@ -9,10 +9,10 @@ from tf_datasets import load_coco
 from utils import denormalize_image, plot_results, plot_img_boxes_cxcywh
 
 # %%
-BATCH_SIZE = 1
+BATCH_SIZE = 2
 # dataset, N = load_coco_tf("train", BATCH_SIZE)
-dataset, N = load_coco("/datadrive/crr/datasets/coco", "train", BATCH_SIZE)
-# dataset, N = load_coco("/home/ch/datasets/coco", "train", BATCH_SIZE)
+# dataset, N = load_coco("/datadrive/crr/datasets/coco", "train", BATCH_SIZE)
+dataset, N = load_coco("/home/ch/datasets/coco", "train", BATCH_SIZE)
 
 # %%
 # train cache 1: 1976.1714327335358
@@ -35,7 +35,7 @@ print("X SHAPE:", x.shape)
 print("Y SHAPE:", y.shape)
 
 # %%
-i = 0
+i = 1
 img = denormalize_image(x[i])
 boxes = y[..., :4][i]
 plot_img_boxes_cxcywh(img, boxes)
