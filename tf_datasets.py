@@ -21,7 +21,6 @@ def augment(img, boxes, labels):
         return img, boxes, labels
 
     def _fn2(img, boxes, labels):
-        tf.print("fn2")
         img, boxes = random_resize_min(img, boxes, min_sides=[400, 500, 600], max_side=None)
         img, boxes, labels = random_size_crop(img, boxes, labels, min_size=384, max_size=600)
         img, boxes = random_resize_min(img, boxes, min_sides=min_sides, max_side=1333)
@@ -56,12 +55,12 @@ def load_coco(coco_path, split, batch_size):
     dataset = dataset.map(
         lambda img_path, boxes, labels: (read_jpeg(img_path), box_xywh_to_yxyx(boxes), tf.cast(labels, tf.float32)))
     if split == "train":
-        # dataset = dataset.cache("tf_data_cache/coco_train")
+        dataset = dataset.cache("tf_data_cache/coco_train")
         dataset = dataset.repeat()
         # dataset = dataset.shuffle(1024)
         dataset = dataset.map(augment)
     else:
-        # dataset = dataset.cache("tf_data_cache/coco_val")
+        dataset = dataset.cache("tf_data_cache/coco_val")
         dataset = dataset.map(augment_val)
     dataset = dataset.filter(
         lambda img_path, boxes, labels: tf.shape(boxes)[0] > 0)  # remove elements with no annotations
@@ -96,7 +95,7 @@ def load_coco_tf(split, batch_size):
     dataset = dataset.map(
         lambda x, boxes, labels: (x, box_denormalize_yxyx(boxes, x), tf.cast(labels, tf.float32)))
     if split == "train":
-        # dataset = dataset.repeat()
+        dataset = dataset.repeat()
         # dataset = dataset.shuffle(1024)
         dataset = dataset.map(augment)
     else:
