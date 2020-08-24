@@ -41,6 +41,15 @@ class HungarianLoss(tf.keras.losses.Loss):
         super().__init__(reduction=tf.keras.losses.Reduction.NONE, name=name)
 
     def call(self, y_true, y_pred):
+        """
+        :param y_true: shape [batch_size, n_true_boxes, 5].
+        :type y_true:
+        :param y_pred: shape [batch_size, n_pred_boxes, 4 + n_classes].
+            If ``self.sequence_input`` is True shape must be [batch_size, sequence_len, n_true_boxes, 5]
+        :type y_pred:
+        :return:
+        :rtype:
+        """
         if self.sequence_input:
             tf.assert_rank(y_pred, 4, "Invalid input shape.")
 
