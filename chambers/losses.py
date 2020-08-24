@@ -108,6 +108,7 @@ class HungarianLoss(tf.keras.losses.Loss):
         # TODO: Make these loss functions take ``y_true_lsa`` and ``y_pred_lsa`` as input
         loss_ce = weighted_cross_entropy_loss(y_true_labels_lsa, y_pred_logits) * self.class_loss_weight
         loss_l1 = l1_loss(y_true_boxes_lsa, y_pred_boxes_lsa) * self.bbox_loss_weight
+        # return y_true_boxes_lsa, y_pred_boxes_lsa
         loss_giou = giou_loss(y_true_boxes_lsa, y_pred_boxes_lsa) * self.giou_loss_weight
 
         # TODO: and then mask padded boxes/labels here
