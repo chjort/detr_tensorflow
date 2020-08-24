@@ -1,13 +1,11 @@
 import tensorflow as tf
+import tensorflow_datasets as tfds
 
 from chambers.augmentations import random_resize_min, box_normalize_cxcywh, box_denormalize_yxyx, flip_left_right, \
     random_size_crop
 from chambers.utils.boxes import box_yxyx_to_cxcywh, box_xywh_to_yxyx
 from datasets import CocoDetection
 from utils import normalize_image, read_jpeg
-
-
-# import tensorflow_datasets as tfds
 
 
 def augment(img, boxes, labels):
@@ -59,9 +57,9 @@ def load_coco(coco_path, split, batch_size):
         lambda img_path, boxes, labels: (read_jpeg(img_path), box_xywh_to_yxyx(boxes), tf.cast(labels, tf.float32)))
     if split == "train":
         dataset = dataset.cache("tf_data_cache/coco_train")
-        dataset = dataset.repeat()
+        # dataset = dataset.repeat()
         # dataset = dataset.shuffle(1024)
-        dataset = dataset.map(augment)
+        # dataset = dataset.map(augment)
     else:
         dataset = dataset.cache("tf_data_cache/coco_val")
         dataset = dataset.map(augment_val)

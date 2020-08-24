@@ -1,15 +1,30 @@
+import tensorflow_addons as tfa
+
 from chambers.losses import HungarianLoss, pairwise_softmax, pairwise_l1, pairwise_giou
 from chambers.utils.boxes import absolute2relative
+from chambers.utils.data import time_dataset
 from chambers.utils.masking import remove_padding_image
 from models import build_detr_resnet50
 from tf_datasets import load_coco
 from utils import denormalize_image, plot_results, plot_img_boxes_cxcywh
 
 # %%
-BATCH_SIZE = 2
+BATCH_SIZE = 1
 # dataset, N = load_coco_tf("train", BATCH_SIZE)
-# dataset, N = load_coco("/datadrive/crr/datasets/coco", "train", BATCH_SIZE)
-dataset, N = load_coco("/home/ch/datasets/coco", "train", BATCH_SIZE)
+dataset, N = load_coco("/datadrive/crr/datasets/coco", "train", BATCH_SIZE)
+# dataset, N = load_coco("/home/ch/datasets/coco", "train", BATCH_SIZE)
+
+# %%
+# train cache 1: 1976.1714327335358
+# train cache 2: 1398.1613807678223
+#
+# val: 32.44592475891113
+# val augment: 101.61271572113037
+# val cache 1: 38.116862773895264
+# val cache 2: 18.88991403579712
+# val cache 2 aug: 85.98375701904297
+
+time_dataset(dataset, n=N)
 
 # %%
 it = iter(dataset)
@@ -19,9 +34,7 @@ x, y = next(it)
 print("X SHAPE:", x.shape)
 print("Y SHAPE:", y.shape)
 
-
-
-#%%
+# %%
 i = 0
 img = denormalize_image(x[i])
 boxes = y[..., :4][i]
@@ -45,6 +58,13 @@ hungarian = HungarianLoss(lsa_losses=[pairwise_softmax, pairwise_l1, pairwise_gi
                           sequence_input=decode_sequence)
 
 # %% COMPILE
+opt = tfa.optimizers.AdamW(weight_decay=1e-4,
+                           learning_rate=1e-4,  # TODO: 1e-4 for transformer, and 1e-5 for backbone
+                           beta_1=0.9,
+                           beta_2=0.999,
+                           epsilon=1e-8,
+                           amsgrad=False
+                           )
 detr.compile("adam",
              loss=hungarian,
              )

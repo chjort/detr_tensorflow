@@ -1,31 +1,9 @@
 import tensorflow as tf
 from tensorflow.python.keras.losses import LossFunctionWrapper
+import tensorflow_addons as tfa
 
 
 class GIoULoss(LossFunctionWrapper):
-    """Implements the GIoU loss function.
-    GIoU loss was first introduced in the
-    [Generalized Intersection over Union:
-    A Metric and A Loss for Bounding Box Regression]
-    (https://giou.stanford.edu/GIoU.pdf).
-    GIoU is an enhancement for models which use IoU in object detection.
-    Usage:
-    ```python
-    gl = tfa.losses.GIoULoss()
-    boxes1 = tf.constant([[4.0, 3.0, 7.0, 5.0], [5.0, 6.0, 10.0, 7.0]])
-    boxes2 = tf.constant([[3.0, 4.0, 6.0, 8.0], [14.0, 14.0, 15.0, 15.0]])
-    loss = gl(boxes1, boxes2)
-    print('Loss: ', loss.numpy())  # Loss: [1.07500000298023224, 1.9333333373069763]
-    ```
-    Usage with tf.keras API:
-    ```python
-    model = tf.keras.Model(inputs, outputs)
-    model.compile('sgd', loss=tfa.losses.GIoULoss())
-    ```
-    Args:
-      mode: one of ['giou', 'iou'], decided to calculate GIoU or IoU loss.
-    """
-
     def __init__(
             self,
             mode: str = "giou",
@@ -36,25 +14,7 @@ class GIoULoss(LossFunctionWrapper):
 
 
 def giou_loss(y_true, y_pred, mode: str = "giou") -> tf.Tensor:
-    """
-    Args:
-        y_true: true targets tensor. The coordinates of the each bounding
-            box in boxes are encoded as [y_min, x_min, y_max, x_max].
-        y_pred: predictions tensor. The coordinates of the each bounding
-            box in boxes are encoded as [y_min, x_min, y_max, x_max].
-        mode: one of ['giou', 'iou'], decided to calculate GIoU or IoU loss.
-    Returns:
-        GIoU loss float `Tensor`.
-    """
-    if mode not in ["giou", "iou"]:
-        raise ValueError("Value of mode should be 'iou' or 'giou'")
-    y_pred = tf.convert_to_tensor(y_pred)
-    if not y_pred.dtype.is_floating:
-        y_pred = tf.cast(y_pred, tf.float32)
-    y_true = tf.cast(y_true, y_pred.dtype)
-    giou = tf.squeeze(_calculate_giou(y_pred, y_true, mode))
-
-    return tf.reduce_mean(1 - giou)
+    return tf.reduce_mean(tfa.losses.giou_loss(y_true, y_pred, mode=mode))
 
 
 def _calculate_giou(b1, b2, mode: str = "giou") -> tf.Tensor:
