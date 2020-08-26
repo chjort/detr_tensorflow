@@ -1,3 +1,4 @@
+import os
 import tensorflow_addons as tfa
 from chambers.optimizers import AdamWLearningRateMultiplier
 from models import build_detr_resnet50
@@ -23,7 +24,7 @@ from models import build_detr_resnet50
 #                              )
 
 # %%
-multipliers = {"backbone": 0.1}
+multipliers = {"backbone": 0.1, "backbone/0/body/layer4": 5, "backbone/0/body/layer4/1": 2}
 opt = AdamWLearningRateMultiplier(weight_decay=1e-4,
                                   learning_rate=1e-4,
                                   beta_1=0.9,
@@ -42,13 +43,11 @@ detr.build()
 detr.load_from_pickle('checkpoints/detr-r50-e632da11.pickle')
 
 # %%
-params = detr.backbone.trainable_variables
-
-mult_lr_params = {p.ref(): opt._get_multiplier(p) for p in params if opt._get_multiplier(p)}
-base_lr_params = [p for p in params if opt._get_multiplier(p) is None]
+params = detr.trainable_variables#.backbone.trainable_variables
+ml = opt._get_params_multipliers(params)
 
 # %%
-for v1, (v2, lr) in zip(params, mult_lr_params.items()):
-    n1 = v1.name
-    n2 = v2.deref().name
-    print(n1 == n2, n1, n2, lr)
+# for v1, (v2, lr) in zip(params, mult_lr_params.items()):
+#     n1 = v1.name
+#     n2 = v2.deref().name
+#     print(n1 == n2, n1, n2, lr)
