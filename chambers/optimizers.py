@@ -59,12 +59,18 @@ class LearningRateMultiplier(tf.keras.optimizers.Optimizer):
         multiplier_params = self._get_params_multipliers(params)
 
         updates = []
-        base_lr = super().lr
+        base_lr = self._optimizer._get_hyper("learning_rate")
         for multiplier, params_i in multiplier_params.items():
-            super().lr = base_lr * multiplier
-            updates.extend(super().get_updates(loss, params_i))
+            print(multiplier)
+            if callable(multiplier):
+                lr = multiplier(self.iterations)
+            else:
+                lr = base_lr * multiplier
 
-        super().lr = base_lr
+            self._optimizer._set_hyper("learning_rate", lr)
+            updates.extend(self._optimizer.get_updates(loss, params_i))
+
+        self._optimizer._set_hyper("learning_rate", base_lr)
 
         return updates
 
@@ -79,7 +85,7 @@ class LearningRateMultiplier(tf.keras.optimizers.Optimizer):
 
     def apply_gradients(self, grads_and_vars, name=None):
         self._optimizer._iterations = self.iterations
-        return super().apply_gradients(grads_and_vars, name)
+        return self._optimizer.apply_gradients(grads_and_vars, name)
 
     def _resource_apply_dense(self, grad, var):
         return self._optimizer._resource_apply_dense(grad, var)

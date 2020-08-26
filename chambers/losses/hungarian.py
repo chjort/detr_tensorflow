@@ -30,6 +30,16 @@ class HungarianLoss(tf.keras.losses.Loss):
         self.bbox_loss_weight = 5
         self.giou_loss_weight = 2
 
+        # TODO: Gather losses from intermediate decoder layers when sequence_input=True
+        # self.batch_loss_ce = tf.Variable(0, dtype=tf.float32, trainable=False)
+        # self.batch_loss_l1 = tf.Variable(0, dtype=tf.float32, trainable=False)
+        # self.batch_loss_giou = tf.Variable(0, dtype=tf.float32, trainable=False)
+        self.batch_losses = {
+            "loss_ce": tf.Variable(0, dtype=tf.float32, trainable=False),
+            "loss_l1": tf.Variable(0, dtype=tf.float32, trainable=False),
+            "loss_giou": tf.Variable(0, dtype=tf.float32, trainable=False)
+        }
+
         if sequence_input:
             self.input_signature = [tf.TensorSpec(shape=(None, None, 5), dtype=tf.float32),
                                     tf.TensorSpec(shape=(None, None, None, None), dtype=tf.float32)]
@@ -57,14 +67,21 @@ class HungarianLoss(tf.keras.losses.Loss):
             loss = tf.constant(0, tf.float32)
             for i in tf.range(seq_len):
                 y_pred_i = y_pred[:, i, :, :]
-                loss_i = self._compute_loss(y_true, y_pred_i)
-                loss = loss + loss_i
+                # loss_i = self._compute_loss(y_true, y_pred_i)
+                # loss = loss + loss_i
+                losses_i = self._compute_losses(y_true, y_pred_i)
+                loss = loss + tf.reduce_sum(losses_i)
         else:
-            loss = self._compute_loss(y_true, y_pred)
+            # loss = self._compute_loss(y_true, y_pred)
+            losses = self._compute_losses(y_true, y_pred)
+            loss = tf.reduce_sum(losses)
+
+            for l, (k, v) in zip(losses, self.batch_losses.items()):
+                v.assign(l)
 
         return loss
 
-    def _compute_loss(self, y_true, y_pred):
+    def _compute_losses(self, y_true, y_pred):
         """
 
         :param y_true: [batch_size, n_true_boxes, 5]
@@ -86,7 +103,7 @@ class HungarianLoss(tf.keras.losses.Loss):
         # Ignore cost matrices that are all NaN.
         nan_matrices = tf.reduce_all(tf.math.is_nan(cost_matrix), axis=(1, 2))
         if tf.reduce_all(nan_matrices):
-            return np.nan
+            return np.nan, np.nan, np.nan
 
         if tf.reduce_any(nan_matrices):
             no_nan_matrices = tf.logical_not(nan_matrices)
@@ -126,8 +143,13 @@ class HungarianLoss(tf.keras.losses.Loss):
 
         # TODO: and then mask padded boxes/labels here
 
-        loss = loss_ce + loss_l1 + loss_giou
-        return loss
+        # self.batch_loss_ce.assign(loss_ce)
+        # self.batch_loss_l1.assign(loss_l1)
+        # self.batch_loss_giou.assign(loss_giou)
+
+        # loss = loss_ce + loss_l1 + loss_giou
+        # return loss
+        return loss_ce, loss_l1, loss_giou
 
     def _compute_cost_matrix(self, y_true, y_pred, batch_mask):
         cost_matrix = tf.math.add_n([loss_fn(y_true, y_pred) * loss_weight

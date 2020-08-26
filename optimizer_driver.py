@@ -1,38 +1,40 @@
-import os
+import tensorflow as tf
 import tensorflow_addons as tfa
-from chambers.optimizers import AdamWLearningRateMultiplier
+
+from chambers.optimizers import LearningRateMultiplier
 from models import build_detr_resnet50
 
 # %%
-# opt = tfa.optimizers.AdamW(weight_decay=1e-4,
-#                            learning_rate=1e-4,  # TODO: 1e-4 for transformer, and 1e-5 for backbone
-#                            beta_1=0.9,
-#                            beta_2=0.999,
-#                            epsilon=1e-8,
-#                            amsgrad=False
-#                            )
+optw = tfa.optimizers.AdamW(weight_decay=1e-4,
+                           learning_rate=1e-4,
+                           beta_1=0.9,
+                           beta_2=0.999,
+                           epsilon=1e-8,
+                           clipnorm=0.1,
+                           amsgrad=False
+                           )
 
-# %%
-# opt = LearningRateMultiplier(tfa.optimizers.AdamW,
-#                              lr_multipliers={"backbone": 0.1},
-#                              weight_decay=1e-4,
-#                              learning_rate=1e-4,
-#                              beta_1=0.9,
-#                              beta_2=0.999,
-#                              epsilon=1e-8,
-#                              amsgrad=False
-#                              )
+lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(initial_learning_rate=5,
+                                                             decay_steps=100,
+                                                             decay_rate=0.1,
+                                                             staircase=False)
 
-# %%
-multipliers = {"backbone": 0.1, "backbone/0/body/layer4": 5, "backbone/0/body/layer4/1": 2}
-opt = AdamWLearningRateMultiplier(weight_decay=1e-4,
-                                  learning_rate=1e-4,
-                                  beta_1=0.9,
-                                  beta_2=0.999,
-                                  epsilon=1e-8,
-                                  amsgrad=False,
-                                  lr_multipliers=multipliers,
-                                  )
+multipliers = {"backbone": 0.1}
+opt = LearningRateMultiplier(optimizer=optw,
+                             lr_multipliers=multipliers,
+                             )
+
+#%%
+
+
+#%%
+print(optw.lr.numpy(), opt.lr.numpy())
+opt.lr = 1
+print(optw.lr.numpy(), opt.lr.numpy())
+opt._optimizer.lr = 2
+print(optw.lr.numpy(), opt.lr.numpy())
+opt._optimizer._set_hyper("learning_rate", 3)
+print(optw.lr.numpy(), opt.lr.numpy())
 
 # %%
 detr = build_detr_resnet50(num_classes=91,
@@ -43,7 +45,7 @@ detr.build()
 detr.load_from_pickle('checkpoints/detr-r50-e632da11.pickle')
 
 # %%
-params = detr.trainable_variables#.backbone.trainable_variables
+params = detr.trainable_variables  # .backbone.trainable_variables
 ml = opt._get_params_multipliers(params)
 
 # %%

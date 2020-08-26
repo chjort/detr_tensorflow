@@ -3,6 +3,7 @@ import tensorflow_addons as tfa
 
 from chambers.losses import HungarianLoss, pairwise_softmax, pairwise_l1, pairwise_giou
 from chambers.optimizers import LearningRateMultiplier
+from chambers.callbacks import LearningRateLogger, HungarianLossLogger
 from models import build_detr_resnet50
 from tf_datasets import load_coco
 
@@ -12,11 +13,13 @@ BATCH_SIZE = 4
 dataset, N = load_coco("/datadrive/crr/datasets/coco", "train", BATCH_SIZE)
 # dataset, N = load_coco("/home/ch/datasets/coco", "train", BATCH_SIZE)
 
+dataset = dataset.prefetch(-1)
+
 EPOCHS = 3  # 150
 STEPS_PER_EPOCH = 50  # N
 
 # %%
-decode_sequence = True
+decode_sequence = False
 detr = build_detr_resnet50(num_classes=91,
                            num_queries=100,
                            mask_value=-1.,
@@ -52,7 +55,8 @@ detr.compile(optimizer=opt,
              )
 
 # %% TRAIN
-detr.fit(dataset,
-         epochs=EPOCHS,
-         steps_per_epoch=STEPS_PER_EPOCH
-         )
+history = detr.fit(dataset,
+                   epochs=EPOCHS,
+                   steps_per_epoch=STEPS_PER_EPOCH,
+                   callbacks=[HungarianLossLogger()]
+                   )
