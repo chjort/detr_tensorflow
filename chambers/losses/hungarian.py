@@ -31,9 +31,6 @@ class HungarianLoss(tf.keras.losses.Loss):
         self.giou_loss_weight = 2
 
         # TODO: Gather losses from intermediate decoder layers when sequence_input=True
-        # self.batch_loss_ce = tf.Variable(0, dtype=tf.float32, trainable=False)
-        # self.batch_loss_l1 = tf.Variable(0, dtype=tf.float32, trainable=False)
-        # self.batch_loss_giou = tf.Variable(0, dtype=tf.float32, trainable=False)
         self.batch_losses = {
             "loss_ce": tf.Variable(0, dtype=tf.float32, trainable=False),
             "loss_l1": tf.Variable(0, dtype=tf.float32, trainable=False),
@@ -67,17 +64,15 @@ class HungarianLoss(tf.keras.losses.Loss):
             loss = tf.constant(0, tf.float32)
             for i in tf.range(seq_len):
                 y_pred_i = y_pred[:, i, :, :]
-                # loss_i = self._compute_loss(y_true, y_pred_i)
-                # loss = loss + loss_i
                 losses_i = self._compute_losses(y_true, y_pred_i)
                 loss = loss + tf.reduce_sum(losses_i)
         else:
-            # loss = self._compute_loss(y_true, y_pred)
             losses = self._compute_losses(y_true, y_pred)
-            loss = tf.reduce_sum(losses)
 
             for l, (k, v) in zip(losses, self.batch_losses.items()):
                 v.assign(l)
+
+            loss = tf.reduce_sum(losses)
 
         return loss
 
@@ -142,13 +137,6 @@ class HungarianLoss(tf.keras.losses.Loss):
                                    box_cxcywh_to_yxyx(y_pred_boxes_lsa)) * self.giou_loss_weight
 
         # TODO: and then mask padded boxes/labels here
-
-        # self.batch_loss_ce.assign(loss_ce)
-        # self.batch_loss_l1.assign(loss_l1)
-        # self.batch_loss_giou.assign(loss_giou)
-
-        # loss = loss_ce + loss_l1 + loss_giou
-        # return loss
         return loss_ce, loss_l1, loss_giou
 
     def _compute_cost_matrix(self, y_true, y_pred, batch_mask):
