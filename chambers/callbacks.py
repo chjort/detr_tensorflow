@@ -12,12 +12,9 @@ class LearningRateLogger(tf.keras.callbacks.Callback):
 
 class HungarianLossLogger(tf.keras.callbacks.Callback):
     def on_batch_end(self, epoch, logs=None):
-        # loss_ce = self.model.loss.batch_loss_ce
-        # loss_l1 = self.model.loss.batch_loss_l1
-        # loss_giou = self.model.loss.batch_loss_giou
-
-        # logs["loss_ce"] = loss_ce
-        # logs["loss_l1"] = loss_l1
-        # logs["loss_giou"] = loss_giou
-        for k, v in self.model.loss.batch_losses.items():
-            logs[k] = v
+        for i in tf.range(tf.shape(self.model.loss.batch_losses)[0]):
+            losses_i = self.model.loss.batch_losses[i]
+            for loss, name in zip(losses_i, self.model.loss.loss_names):
+                if i > 0:
+                    name = "{}_{}".format(name, i)
+                logs[name] = loss

@@ -1,9 +1,9 @@
 import tensorflow as tf
 import tensorflow_addons as tfa
 
+from chambers.callbacks import HungarianLossLogger
 from chambers.losses import HungarianLoss, pairwise_softmax, pairwise_l1, pairwise_giou
 from chambers.optimizers import LearningRateMultiplier
-from chambers.callbacks import LearningRateLogger, HungarianLossLogger
 from models import build_detr_resnet50
 from tf_datasets import load_coco
 
@@ -55,8 +55,10 @@ detr.compile(optimizer=opt,
              )
 
 # %% TRAIN
+# ssh -L 6006:127.0.0.1:6006 crr@40.68.160.55
+tensorboard = tf.keras.callbacks.TensorBoard(log_dir="tb_logs", write_graph=False, update_freq="epoch", profile_batch=0)
 history = detr.fit(dataset,
                    epochs=EPOCHS,
                    steps_per_epoch=STEPS_PER_EPOCH,
-                   callbacks=[HungarianLossLogger()]
+                   callbacks=[HungarianLossLogger(), tensorboard]
                    )

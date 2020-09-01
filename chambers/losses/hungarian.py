@@ -31,11 +31,10 @@ class HungarianLoss(tf.keras.losses.Loss):
         self.giou_loss_weight = 2
 
         # TODO: Gather losses from intermediate decoder layers when sequence_input=True
-        self.batch_losses = {
-            "loss_ce": tf.Variable(0, dtype=tf.float32, trainable=False),
-            "loss_l1": tf.Variable(0, dtype=tf.float32, trainable=False),
-            "loss_giou": tf.Variable(0, dtype=tf.float32, trainable=False)
-        }
+        self.loss_names = ["loss_ce", "loss_l1", "loss_giou"]
+        self.batch_losses = tf.Variable(tf.zeros((1, 3)), shape=tf.TensorShape([None, len(self.loss_names)]),
+                                        dtype=tf.float32,
+                                        trainable=False)
 
         if sequence_input:
             self.input_signature = [tf.TensorSpec(shape=(None, None, 5), dtype=tf.float32),
@@ -58,19 +57,22 @@ class HungarianLoss(tf.keras.losses.Loss):
         :rtype:
         """
         if self.sequence_input:
+            # TODO: Parallelize loss computation over sequence
             tf.assert_rank(y_pred, 4, "Invalid input shape.")
 
+            batch_losses = tf.TensorArray(tf.float32, size=0, dynamic_size=True, infer_shape=True)
             seq_len = tf.shape(y_pred)[1]
-            loss = tf.constant(0, tf.float32)
             for i in tf.range(seq_len):
                 y_pred_i = y_pred[:, i, :, :]
                 losses_i = self._compute_losses(y_true, y_pred_i)
-                loss = loss + tf.reduce_sum(losses_i)
+                batch_losses = batch_losses.write(i, losses_i)
+
+            batch_losses_values = batch_losses.stack()
+            self.batch_losses.assign(batch_losses_values)
+            loss = tf.reduce_sum(batch_losses_values)
         else:
             losses = self._compute_losses(y_true, y_pred)
-
-            for l, (k, v) in zip(losses, self.batch_losses.items()):
-                v.assign(l)
+            self.batch_losses.assign([losses])
 
             loss = tf.reduce_sum(losses)
 
