@@ -1,7 +1,8 @@
 import tensorflow as tf
-# import tensorflow_datasets as tfds
+import tensorflow_datasets as tfds
 
-from chambers.augmentations import random_resize_min, box_normalize_cxcywh, box_denormalize_yxyx, flip_left_right
+from chambers.augmentations import random_resize_min, box_normalize_cxcywh, box_denormalize_yxyx, flip_left_right, \
+    random_size_crop
 from chambers.utils.boxes import box_yxyx_to_cxcywh, box_xywh_to_yxyx
 from datasets import CocoDetection
 from utils import normalize_image, read_jpeg
@@ -15,26 +16,27 @@ def augment(img, boxes, labels):
 
     min_sides = [480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800]
 
-    def _fn1(img, boxes):
+    def _fn1(img, boxes, labels):
         img, boxes = random_resize_min(img, boxes, min_sides=min_sides, max_side=1333)
-        return img, boxes
+        return img, boxes, labels
 
-    def _fn2(img, boxes):
+    def _fn2(img, boxes, labels):
         img, boxes = random_resize_min(img, boxes, min_sides=[400, 500, 600], max_side=None)
-        # img, boxes = random_size_crop(img, boxes, min_size=384, max_size=600)
+        img, boxes, labels = random_size_crop(img, boxes, labels, min_size=384, max_size=600)
         img, boxes = random_resize_min(img, boxes, min_sides=min_sides, max_side=1333)
-        return img, boxes
+        return img, boxes, labels
 
-    img, boxes = tf.cond(tf.random.uniform([1], 0, 1) > 0.5,
-                         true_fn=lambda: _fn1(img, boxes),
-                         false_fn=lambda: _fn2(img, boxes)
-                         )
+    img, boxes, labels = tf.cond(tf.random.uniform([1], 0, 1) > 0.5,
+                                 true_fn=lambda: _fn1(img, boxes, labels),
+                                 false_fn=lambda: _fn2(img, boxes, labels)
+                                 )
 
     return img, boxes, labels
 
 
 def augment_val(img, boxes, labels):
     img, boxes = random_resize_min(img, boxes, min_sides=[800], max_side=1333)
+
     return img, boxes, labels
 
 
@@ -50,13 +52,18 @@ def load_coco(coco_path, split, batch_size):
     dataset = tf.data.Dataset.from_generator(lambda: coco_data, output_types=(tf.string, tf.float32, tf.int32))
     dataset = dataset.filter(
         lambda img_path, boxes, labels: tf.shape(boxes)[0] > 0)  # remove elements with no annotations
-    # dataset = dataset.repeat()
     dataset = dataset.map(
         lambda img_path, boxes, labels: (read_jpeg(img_path), box_xywh_to_yxyx(boxes), tf.cast(labels, tf.float32)))
     if split == "train":
+        dataset = dataset.cache("tf_data_cache/coco_train")
+        dataset = dataset.repeat()
+        # dataset = dataset.shuffle(1024)
         dataset = dataset.map(augment)
     else:
+        dataset = dataset.cache("tf_data_cache/coco_val")
         dataset = dataset.map(augment_val)
+    dataset = dataset.filter(
+        lambda img_path, boxes, labels: tf.shape(boxes)[0] > 0)  # remove elements with no annotations
     dataset = dataset.map(normalize)
     dataset = dataset.map(lambda img, boxes, labels: (img, tf.concat([boxes, tf.expand_dims(labels, 1)], axis=1)))
 
@@ -64,10 +71,6 @@ def load_coco(coco_path, split, batch_size):
                                    padded_shapes=((None, None, 3), (None, 5)),
                                    padding_values=(tf.constant(-1.), tf.constant(-1.))
                                    )
-
-    # Ragged instead of padded_batch
-    # dataset = dataset.map(lambda x, y: (tf.RaggedTensor.from_tensor(x), tf.RaggedTensor.from_tensor(y)))
-    # dataset = dataset.batch(2)
 
     if split == "train":
         n_samples_no_label = 1021
@@ -92,6 +95,8 @@ def load_coco_tf(split, batch_size):
     dataset = dataset.map(
         lambda x, boxes, labels: (x, box_denormalize_yxyx(boxes, x), tf.cast(labels, tf.float32)))
     if split == "train":
+        dataset = dataset.repeat()
+        # dataset = dataset.shuffle(1024)
         dataset = dataset.map(augment)
     else:
         dataset = dataset.map(augment_val)

@@ -1,6 +1,8 @@
 import matplotlib.pyplot as plt
 import tensorflow as tf
 
+from chambers.utils.boxes import box_cxcywh_to_yxyx
+
 
 def read_jpeg(img_path):
     image = tf.io.read_file(img_path)
@@ -63,4 +65,26 @@ def plot_results(img, labels, probs, boxes):
                 bbox=dict(facecolor='yellow', alpha=0.5))
     plt.axis('off')
     plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
+    plt.show()
+
+
+def plot_img_boxes_cxcywh(img, boxes):
+    boxes = box_cxcywh_to_yxyx(boxes)
+
+    colors = [[1.0, 0., 0.]]
+    box_img = tf.image.draw_bounding_boxes([img], [boxes], colors)
+    box_img = tf.cast(box_img, tf.uint8)
+    box_img = box_img[0]
+
+    plt.imshow(box_img.numpy())
+    plt.show()
+
+
+def plot_img_boxes_yxyx(img, boxes):
+    colors = [[1.0, 0., 0.]]
+    box_img = tf.image.draw_bounding_boxes([img], [boxes], colors)
+    box_img = tf.cast(box_img, tf.uint8)
+    box_img = box_img[0]
+
+    plt.imshow(box_img.numpy())
     plt.show()

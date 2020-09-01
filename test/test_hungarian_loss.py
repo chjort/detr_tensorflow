@@ -4,7 +4,8 @@ import time
 import numpy as np
 import tensorflow as tf
 
-from chambers.losses import HungarianLoss, pairwise_softmax, pairwise_l1, pairwise_giou
+from chambers.losses import HungarianLoss
+from chambers.losses import pairwise_softmax, pairwise_l1, pairwise_giou
 
 
 def load_samples(as_sequence=False):
