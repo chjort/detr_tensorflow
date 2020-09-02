@@ -23,9 +23,10 @@ class HungarianLoss(tf.keras.losses.Loss):
         self.lsa_losses = lsa_losses
         self.lsa_loss_weights = lsa_loss_weights
 
-        self.weighted_cross_entropy_loss = WeightedSparseCategoricalCrossEntropyCocoDETR()
-        self.l1_loss = L1Loss()
-        self.giou_loss = GIoULoss()
+        self.weighted_cross_entropy_loss = WeightedSparseCategoricalCrossEntropyCocoDETR(
+            reduction=tf.keras.losses.Reduction.NONE)
+        self.l1_loss = L1Loss(reduction=tf.keras.losses.Reduction.NONE)
+        self.giou_loss = GIoULoss(reduction=tf.keras.losses.Reduction.NONE)
         self.class_loss_weight = 1
         self.bbox_loss_weight = 5
         self.giou_loss_weight = 2
@@ -196,8 +197,8 @@ def weighted_cross_entropy_loss_coco_detr(y_true, y_pred):
 
 
 class WeightedSparseCategoricalCrossEntropyCocoDETR(tf.keras.losses.Loss):
-    def __init__(self, name="weighted_sparse_categorical_cross_entropy"):
-        super().__init__(reduction=tf.keras.losses.Reduction.NONE, name=name)
+    def __init__(self, reduction=tf.keras.losses.Reduction.AUTO, name="weighted_sparse_categorical_cross_entropy"):
+        super().__init__(reduction=reduction, name=name)
         real_class_weight = 1
         non_class_weight = 0.1
         self.n_class = 92
