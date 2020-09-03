@@ -5,30 +5,27 @@ from chambers.callbacks import HungarianLossLogger
 from chambers.losses import HungarianLoss, pairwise_softmax, pairwise_l1, pairwise_giou
 from chambers.optimizers import LearningRateMultiplier
 from models import build_detr_resnet50
-from tf_datasets import load_coco
+from tf_datasets import load_coco_tf, load_coco
+
+
+def loss_placeholder(y_true, y_pred):
+    y_true_labels = y_true[..., -1]  # [1]
+    y_pred_logits = y_pred[..., 4:]  # [1]
+    y_pred = y_pred_logits[:, :1, :]
+    y_true = tf.one_hot(tf.cast(y_true_labels, tf.int32), depth=92)[:, :1, :]
+    return tf.keras.losses.categorical_crossentropy(y_true, y_pred, from_logits=True)
+
+# %% strategy
+strategy = tf.distribute.MirroredStrategy(
+    # cross_device_ops=tf.distribute.NcclAllReduce(num_packs=0)
+)
+# strategy = tf.distribute.OneDeviceStrategy("/gpu:0")
 
 # %%
-physical_gpus = tf.config.experimental.list_physical_devices("GPU")
-print("Number of physical GPUs:", len(physical_gpus))
-
-tf.config.experimental.set_virtual_device_configuration(device=physical_gpus[0],
-                                                        logical_devices=[
-                                                            tf.config.experimental.VirtualDeviceConfiguration(10240),
-                                                            tf.config.experimental.VirtualDeviceConfiguration(10240)
-                                                        ]
-                                                        )
-logical_gpus = tf.config.experimental.list_logical_devices("GPU")
-print("Number of logical GPUs:", len(logical_gpus))
-
-#%% strategy
-strategy = tf.distribute.MirroredStrategy()
-print("Number of devices in strategy:", strategy.num_replicas_in_sync)
-
-# %%
-BATCH_SIZE_PER_REPLICA = 2
+BATCH_SIZE_PER_REPLICA = 4
 GLOBAL_BATCH_SIZE = BATCH_SIZE_PER_REPLICA * strategy.num_replicas_in_sync
 
-# dataset, N = load_coco_tf("train", BATCH_SIZE)
+# dataset, N = load_coco_tf("train", GLOBAL_BATCH_SIZE)
 dataset, N = load_coco("/datadrive/crr/datasets/coco", "train", GLOBAL_BATCH_SIZE)
 # dataset, N = load_coco("/home/ch/datasets/coco", "train", BATCH_SIZE)
 
@@ -67,11 +64,16 @@ hungarian = HungarianLoss(lsa_losses=[pairwise_softmax, pairwise_l1, pairwise_gi
                           sequence_input=decode_sequence)
 detr.compile(optimizer=opt,
              loss=hungarian,
+             # loss=loss_placeholder
              )
 
 # %% TRAIN
-EPOCHS = 3  # 150
-STEPS_PER_EPOCH = 50  # N
+EPOCHS = 10  # 150
+N = 200
+STEPS_PER_EPOCH = N / GLOBAL_BATCH_SIZE
+
+print("Number of devices in strategy:", strategy.num_replicas_in_sync)
+print("Global batch size: {}. Per device batch size: {}".format(GLOBAL_BATCH_SIZE, BATCH_SIZE_PER_REPLICA))
 
 # ssh -L 6006:127.0.0.1:6006 crr@40.68.160.55
 # tensorboard = tf.keras.callbacks.TensorBoard(log_dir="tb_logs", write_graph=False, update_freq="epoch", profile_batch=0)
@@ -83,3 +85,65 @@ history = detr.fit(dataset,
                        # tensorboard
                    ]
                    )
+
+# Single GPU:
+"""
+3 epochs
+50/50 [==============================] - 130s 3s/step - loss: 11.8833 - loss_ce: 4.5189 - loss_l1: 5.2441 - loss_giou: 2.1202
+Epoch 2/3
+50/50 [==============================] - 101s 2s/step - loss: 11.6155 - loss_ce: 4.5129 - loss_l1: 5.0268 - loss_giou: 2.0758
+Epoch 3/3
+50/50 [==============================] - 88s 2s/step - loss: 12.0338 - loss_ce: 4.5101 - loss_l1: 5.3720 - loss_giou: 2.1516
+
+10 epochs
+50/50 [==============================] - 129s 3s/step - loss: 4.5206
+Epoch 2/10
+50/50 [==============================] - 101s 2s/step - loss: 4.5180
+Epoch 3/10
+50/50 [==============================] - 87s 2s/step - loss: 4.5165
+Epoch 4/10
+50/50 [==============================] - 101s 2s/step - loss: 4.5168
+Epoch 5/10
+50/50 [==============================] - 95s 2s/step - loss: 4.5160
+Epoch 6/10
+50/50 [==============================] - 90s 2s/step - loss: 4.5163
+Epoch 7/10
+50/50 [==============================] - 91s 2s/step - loss: 4.5164
+Epoch 8/10
+50/50 [==============================] - 100s 2s/step - loss: 4.5164
+Epoch 9/10
+50/50 [==============================] - 90s 2s/step - loss: 4.5171
+Epoch 10/10
+50/50 [==============================] - 84s 2s/step - loss: 4.5166
+"""
+
+# 2 GPU:
+"""
+3 epochs
+25/25 [==============================] - 130s 5s/step - loss: 11.8861 - loss_ce: 4.5203 - loss_l1: 5.3216 - loss_giou: 2.1077
+Epoch 2/3
+25/25 [==============================] - 82s 3s/step - loss: 11.6242 - loss_ce: 4.5172 - loss_l1: 4.9766 - loss_giou: 2.0794
+Epoch 3/3
+25/25 [==============================] - 68s 3s/step - loss: 12.0430 - loss_ce: 4.5145 - loss_l1: 5.4470 - loss_giou: 2.2056
+
+10 epochs
+25/25 [==============================] - 109s 4s/step - loss: 4.5211
+Epoch 2/10
+25/25 [==============================] - 65s 3s/step - loss: 4.5197
+Epoch 3/10
+25/25 [==============================] - 51s 2s/step - loss: 4.5183
+Epoch 4/10
+25/25 [==============================] - 63s 3s/step - loss: 4.5173
+Epoch 5/10
+25/25 [==============================] - 55s 2s/step - loss: 4.5160
+Epoch 6/10
+25/25 [==============================] - 55s 2s/step - loss: 4.5161
+Epoch 7/10
+25/25 [==============================] - 55s 2s/step - loss: 4.5161
+Epoch 8/10
+25/25 [==============================] - 59s 2s/step - loss: 4.5158
+Epoch 9/10
+25/25 [==============================] - 53s 2s/step - loss: 4.5166
+Epoch 10/10
+25/25 [==============================] - 46s 2s/step - loss: 4.5160
+"""
