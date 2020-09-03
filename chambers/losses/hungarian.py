@@ -31,7 +31,6 @@ class HungarianLoss(tf.keras.losses.Loss):
         self.bbox_loss_weight = 5
         self.giou_loss_weight = 2
 
-        # TODO: Gather losses from intermediate decoder layers when sequence_input=True
         self.loss_names = ["loss_ce", "loss_l1", "loss_giou"]
         self.batch_losses = tf.Variable(tf.zeros((1, 3)), shape=tf.TensorShape([None, len(self.loss_names)]),
                                         dtype=tf.float32,

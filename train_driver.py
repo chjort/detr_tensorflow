@@ -16,23 +16,24 @@ def loss_placeholder(y_true, y_pred):
     return tf.keras.losses.categorical_crossentropy(y_true, y_pred, from_logits=True)
 
 # %% strategy
-strategy = tf.distribute.MirroredStrategy(
-    # cross_device_ops=tf.distribute.NcclAllReduce(num_packs=0)
-)
+strategy = tf.distribute.MirroredStrategy()
 # strategy = tf.distribute.OneDeviceStrategy("/gpu:0")
+# strategy = tf.distribute.Strategy()
 
 # %%
 BATCH_SIZE_PER_REPLICA = 4
 GLOBAL_BATCH_SIZE = BATCH_SIZE_PER_REPLICA * strategy.num_replicas_in_sync
+# GLOBAL_BATCH_SIZE = BATCH_SIZE_PER_REPLICA
 
 # dataset, N = load_coco_tf("train", GLOBAL_BATCH_SIZE)
 dataset, N = load_coco("/datadrive/crr/datasets/coco", "train", GLOBAL_BATCH_SIZE)
 # dataset, N = load_coco("/home/ch/datasets/coco", "train", BATCH_SIZE)
 
-dataset = dataset.prefetch(-1)
+# dataset = dataset.prefetch(-1)
 
 # %%
 with strategy.scope():
+# with tf.device("/gpu:0"):
     decode_sequence = False
     detr = build_detr_resnet50(num_classes=91,
                                num_queries=100,
@@ -72,7 +73,7 @@ EPOCHS = 10  # 150
 N = 200
 STEPS_PER_EPOCH = N / GLOBAL_BATCH_SIZE
 
-print("Number of devices in strategy:", strategy.num_replicas_in_sync)
+# print("Number of devices in strategy:", strategy.num_replicas_in_sync)
 print("Global batch size: {}. Per device batch size: {}".format(GLOBAL_BATCH_SIZE, BATCH_SIZE_PER_REPLICA))
 
 # ssh -L 6006:127.0.0.1:6006 crr@40.68.160.55
@@ -88,14 +89,7 @@ history = detr.fit(dataset,
 
 # Single GPU:
 """
-3 epochs
-50/50 [==============================] - 130s 3s/step - loss: 11.8833 - loss_ce: 4.5189 - loss_l1: 5.2441 - loss_giou: 2.1202
-Epoch 2/3
-50/50 [==============================] - 101s 2s/step - loss: 11.6155 - loss_ce: 4.5129 - loss_l1: 5.0268 - loss_giou: 2.0758
-Epoch 3/3
-50/50 [==============================] - 88s 2s/step - loss: 12.0338 - loss_ce: 4.5101 - loss_l1: 5.3720 - loss_giou: 2.1516
-
-10 epochs
+10 epochs (placeholder)
 50/50 [==============================] - 129s 3s/step - loss: 4.5206
 Epoch 2/10
 50/50 [==============================] - 101s 2s/step - loss: 4.5180
@@ -115,18 +109,35 @@ Epoch 9/10
 50/50 [==============================] - 90s 2s/step - loss: 4.5171
 Epoch 10/10
 50/50 [==============================] - 84s 2s/step - loss: 4.5166
+
+TODO: 10 epochs (placeholder, no prefetch)
+
+10 epochs (hungarian)
+50/50 [==============================] - 130s 3s/step - loss: 11.8833 - loss_ce: 4.5189 - loss_l1: 5.2441 - loss_giou: 2.1202
+Epoch 2/10
+50/50 [==============================] - 101s 2s/step - loss: 11.6155 - loss_ce: 4.5129 - loss_l1: 5.0268 - loss_giou: 2.0758
+Epoch 3/10
+50/50 [==============================] - 88s 2s/step - loss: 12.0338 - loss_ce: 4.5101 - loss_l1: 5.3720 - loss_giou: 2.1516
+Epoch 4/10
+50/50 [==============================] - 102s 2s/step - loss: 11.9497 - loss_ce: 4.5096 - loss_l1: 5.3074 - loss_giou: 2.1327
+Epoch 5/10
+50/50 [==============================] - 95s 2s/step - loss: 11.8448 - loss_ce: 4.5088 - loss_l1: 5.2172 - loss_giou: 2.1189
+Epoch 6/10
+50/50 [==============================] - 91s 2s/step - loss: 11.7592 - loss_ce: 4.5089 - loss_l1: 5.1461 - loss_giou: 2.1042
+Epoch 7/10
+50/50 [==============================] - 92s 2s/step - loss: 11.7861 - loss_ce: 4.5089 - loss_l1: 5.1637 - loss_giou: 2.1135
+Epoch 8/10
+50/50 [==============================] - 100s 2s/step - loss: 11.7100 - loss_ce: 4.5090 - loss_l1: 5.1021 - loss_giou: 2.0990
+Epoch 9/10
+50/50 [==============================] - 91s 2s/step - loss: 11.8219 - loss_ce: 4.5091 - loss_l1: 5.1911 - loss_giou: 2.1217
+Epoch 10/10
+50/50 [==============================] - 84s 2s/step - loss: 11.7200 - loss_ce: 4.5095 - loss_l1: 5.0921 - loss_giou: 2.1184
+
 """
 
 # 2 GPU:
 """
-3 epochs
-25/25 [==============================] - 130s 5s/step - loss: 11.8861 - loss_ce: 4.5203 - loss_l1: 5.3216 - loss_giou: 2.1077
-Epoch 2/3
-25/25 [==============================] - 82s 3s/step - loss: 11.6242 - loss_ce: 4.5172 - loss_l1: 4.9766 - loss_giou: 2.0794
-Epoch 3/3
-25/25 [==============================] - 68s 3s/step - loss: 12.0430 - loss_ce: 4.5145 - loss_l1: 5.4470 - loss_giou: 2.2056
-
-10 epochs
+10 epochs (placeholder)
 25/25 [==============================] - 109s 4s/step - loss: 4.5211
 Epoch 2/10
 25/25 [==============================] - 65s 3s/step - loss: 4.5197
@@ -146,4 +157,29 @@ Epoch 9/10
 25/25 [==============================] - 53s 2s/step - loss: 4.5166
 Epoch 10/10
 25/25 [==============================] - 46s 2s/step - loss: 4.5160
+
+TODO: 10 epochs (placeholder, no prefetch)
+
+10 epochs (hungarian)
+25/25 [==============================] - 129s 5s/step - loss: 11.8861
+Epoch 2/10
+25/25 [==============================] - 81s 3s/step - loss: 11.6242
+Epoch 3/10
+25/25 [==============================] - 68s 3s/step - loss: 12.0430
+Epoch 4/10
+25/25 [==============================] - 81s 3s/step - loss: 11.9534
+Epoch 5/10
+25/25 [==============================] - 71s 3s/step - loss: 11.8452
+Epoch 6/10
+25/25 [==============================] - 72s 3s/step - loss: 11.7589
+Epoch 7/10
+25/25 [==============================] - 74s 3s/step - loss: 11.7853
+Epoch 8/10
+25/25 [==============================] - 76s 3s/step - loss: 11.7085
+Epoch 9/10
+25/25 [==============================] - 69s 3s/step - loss: 11.8199
+Epoch 10/10
+25/25 [==============================] - 61s 2s/step - loss: 11.7179
+
+TODO: 10 epochs (hungarian, no prefetch)
 """
