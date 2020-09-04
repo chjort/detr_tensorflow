@@ -32,9 +32,10 @@ class HungarianLoss(tf.keras.losses.Loss):
         self.giou_loss_weight = 2
 
         self.loss_names = ["loss_ce", "loss_l1", "loss_giou"]
-        self.batch_losses = tf.Variable(tf.zeros((1, 3)), shape=tf.TensorShape([None, len(self.loss_names)]),
-                                        dtype=tf.float32,
-                                        trainable=False)
+        # self.batch_losses = tf.Variable(tf.zeros((1, 3)), shape=tf.TensorShape([None, len(self.loss_names)]),
+        #                                 dtype=tf.float32,
+        #                                 trainable=False,
+        #                                 )
 
         if sequence_input:
             self.input_signature = [tf.TensorSpec(shape=(None, None, 5), dtype=tf.float32),
@@ -68,11 +69,11 @@ class HungarianLoss(tf.keras.losses.Loss):
                 batch_losses = batch_losses.write(i, losses_i)
 
             batch_losses_values = batch_losses.stack()
-            self.batch_losses.assign(batch_losses_values)
+            # self.batch_losses.assign(batch_losses_values)
             loss = tf.reduce_sum(batch_losses_values)
         else:
             losses = self._compute_losses(y_true, y_pred)
-            self.batch_losses.assign([losses])
+            # self.batch_losses.assign([losses])
 
             loss = tf.reduce_sum(losses)
 
@@ -137,6 +138,7 @@ class HungarianLoss(tf.keras.losses.Loss):
         loss_l1 = self.l1_loss(y_true_boxes_lsa, y_pred_boxes_lsa) * self.bbox_loss_weight
         loss_giou = self.giou_loss(box_cxcywh_to_yxyx(y_true_boxes_lsa),
                                    box_cxcywh_to_yxyx(y_pred_boxes_lsa)) * self.giou_loss_weight
+        # loss_giou = self.giou_loss(y_true_boxes_lsa, y_pred_boxes_lsa) * self.giou_loss_weight
 
         # TODO: and then mask padded boxes/labels here
         return loss_ce, loss_l1, loss_giou
