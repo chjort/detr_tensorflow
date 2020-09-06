@@ -36,7 +36,7 @@ class DETR(tf.keras.Model):
         self.input_proj = Conv2D(self.model_dim, kernel_size=1, name='input_proj')
 
         self.query_embed = tf.Variable(
-            tf.zeros((num_queries, self.model_dim), dtype=tf.float32),
+            tf.zeros((self.num_queries, self.model_dim), dtype=tf.float32),
             name='query_embed/kernel')
 
         self.class_embed = Linear(num_classes + 1, name='class_embed')
