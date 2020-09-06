@@ -29,18 +29,30 @@ class Transformer(tf.keras.Model):
     def call(self, source, mask, query_encoding, pos_encoding, training=False):
         batch_size, rows, cols = [tf.shape(source)[i] for i in range(3)]
 
+        tf.print("source:", tf.shape(source), end=" -> ")
         source = tf.reshape(source, [batch_size, -1, self.model_dim])
+        tf.print(tf.shape(source), end=" -> ")
         source = tf.transpose(source, [1, 0, 2])
+        tf.print(tf.shape(source))
 
+        tf.print("pos_encoding:", tf.shape(pos_encoding), end=" -> ")
         pos_encoding = tf.reshape(pos_encoding, [batch_size, -1, self.model_dim])
+        tf.print(tf.shape(pos_encoding), end=" -> ")
         pos_encoding = tf.transpose(pos_encoding, [1, 0, 2])
+        tf.print(tf.shape(pos_encoding))
 
+        tf.print("query_encoding:", tf.shape(query_encoding), end=" -> ")
         query_encoding = tf.expand_dims(query_encoding, axis=1)
+        tf.print(tf.shape(query_encoding), end=" -> ")
         query_encoding = tf.tile(query_encoding, [1, batch_size, 1])
+        tf.print(tf.shape(query_encoding))
 
+        tf.print("mask:", tf.shape(mask), end=" -> ")
         mask = tf.reshape(mask, [batch_size, -1])  # shape [batch_size, h*w]
+        tf.print(tf.shape(mask))
 
         target = tf.zeros_like(query_encoding)
+        tf.print("target:", tf.shape(target))
 
         memory = self.encoder(source, source_key_padding_mask=mask,
                               pos_encoding=pos_encoding, training=training)
@@ -48,9 +60,15 @@ class Transformer(tf.keras.Model):
                           pos_encoding=pos_encoding, query_encoding=query_encoding,
                           training=training)
 
+        tf.print("hs:", tf.shape(hs), end=" -> ")
         hs = tf.transpose(hs, [0, 2, 1, 3])
+        tf.print(tf.shape(hs))
+
+        tf.print("memory:", tf.shape(memory), end=" -> ")
         memory = tf.transpose(memory, [1, 0, 2])
+        tf.print(tf.shape(memory), end=" -> ")
         memory = tf.reshape(memory, [batch_size, rows, cols, self.model_dim])
+        tf.print(tf.shape(memory))
 
         return hs, memory
 
