@@ -72,48 +72,63 @@ class TransformerDecoderLayer(tf.keras.layers.Layer):
         return norm_output3
 
 
-# class TransformerEncoder(tf.keras.layers.Layer):
-#     def __init__(self, embed_dim, num_heads, dim_feedforward, num_layers, dropout_rate=0.1, **kwargs):
-#         super(TransformerEncoder, self).__init__(**kwargs)
-#         self.embed_dim = embed_dim
-#         self.num_heads = num_heads
-#         self.dim_feedforward = dim_feedforward
-#         self.num_layers = num_layers
-#         self.layers = [TransformerEncoderLayer(embed_dim, num_heads, dim_feedforward, dropout_rate)
-#                        for i in range(num_layers)]
-
-
-class TransformerDecoderDETR(tf.keras.layers.Layer):
-    def __init__(self, output_len, embed_dim, num_heads, dim_feedforward, num_layers, dropout_rate=0.1,
-                 return_sequence=False, **kwargs):
-        super(TransformerDecoderDETR, self).__init__(**kwargs)
-        self.output_len = output_len
+class TransformerEncoder(tf.keras.layers.Layer):
+    def __init__(self, embed_dim, num_heads, dim_feedforward, num_layers, dropout_rate=0.1, norm=False, **kwargs):
+        super(TransformerEncoder, self).__init__(**kwargs)
         self.embed_dim = embed_dim
         self.num_heads = num_heads
         self.dim_feedforward = dim_feedforward
         self.num_layers = num_layers
+        self.norm = norm
+        if norm:
+            self._norm_layer = tf.keras.layers.LayerNormalization(epsilon=1e-5)
+        else:
+            self._norm_layer = None
+        self.layers = [TransformerEncoderLayer(embed_dim, num_heads, dim_feedforward, dropout_rate)
+                       for i in range(num_layers)]
+
+    def call(self, inputs, **kwargs):
+        x = inputs
+        for layer in self.layers:
+            x = layer(x)
+
+        if self.norm:
+            x = self._norm_layer(x)
+
+        return x
+
+
+class TransformerDecoder(tf.keras.layers.Layer):
+    def __init__(self, embed_dim, num_heads, dim_feedforward, num_layers, dropout_rate=0.1, norm=False,
+                 return_sequence=False, **kwargs):
+        super(TransformerDecoder, self).__init__(**kwargs)
+        self.embed_dim = embed_dim
+        self.num_heads = num_heads
+        self.dim_feedforward = dim_feedforward
+        self.num_layers = num_layers
+        self.norm = norm
+        if norm:
+            self._norm_layer = tf.keras.layers.LayerNormalization(epsilon=1e-5)
+        else:
+            self._norm_layer = None
         self.return_sequence = return_sequence
         self.layers = [TransformerDecoderLayer(embed_dim, num_heads, dim_feedforward, dropout_rate)
                        for i in range(num_layers)]
 
-        # self.decoder_embedding = self.add_weight(name="decoder_embeddings",
-        #                                          shape=(output_len, embed_dim),
-        #                                          dtype=tf.float32,
-        #                                          initializer="zeros",
-        #                                          trainable=True)
-        self.decoder_emb = tf.keras.layers.Embedding(output_len, 256, embeddings_initializer="zeros")
-
     def call(self, inputs, **kwargs):
-        batch_size = tf.shape(inputs)[0]
-        x = tf.tile(tf.expand_dims(tf.range(self.output_len), 0), [batch_size, 1])
-        x = self.decoder_emb(x)
+        x, x_enc = inputs
 
         decode_sequence = []
         for layer in self.layers:
-            x = layer([x, inputs])
+            x = layer([x, x_enc])
             decode_sequence.append(x)
+
+        if self.norm:
+            x = self._norm_layer(x)
+            decode_sequence = [self._norm_layer(x) for x in decode_sequence]
 
         if self.return_sequence:
             x = tf.stack(decode_sequence, axis=0)
+            x = tf.transpose(x, [1, 0, 2, 3])
 
         return x

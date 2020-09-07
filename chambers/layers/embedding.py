@@ -20,8 +20,7 @@ class PositionalEmbedding1D(tf.keras.layers.Layer):
         sequence_len = tf.shape(ones)[1]
         positional_mask = self.positional_encoding(sequence_len, self.embedding_dim)
 
-        # return inputs + positional_mask
-        return positional_mask
+        return inputs + positional_mask
 
     def get_angles(self, pos, i):
         angle_rates = 1 / np.power(self.temperature, (2 * (i // 2)) / np.float32(self.embedding_dim))
@@ -47,7 +46,7 @@ class PositionalEmbedding2D(tf.keras.layers.Layer):
     def __init__(self, embedding_dim, temperature=10000,
                  normalize=False, scale=None, eps=1e-6, **kwargs):
         super().__init__(**kwargs)
-
+        self.embedding_dim = embedding_dim
         self.embedding_dim_1d = embedding_dim // 2
         self.temperature = temperature
         self.normalize = normalize
@@ -69,8 +68,7 @@ class PositionalEmbedding2D(tf.keras.layers.Layer):
 
         positional_mask = self.compute_positional_mask(ones)
 
-        # return inputs + positional_mask
-        return positional_mask
+        return inputs + positional_mask
 
     def compute_mask(self, inputs, mask):
         return mask
@@ -101,9 +99,3 @@ class PositionalEmbedding2D(tf.keras.layers.Layer):
 
         pos_emb = tf.concat([pos_y, pos_x], axis=3)
         return pos_emb
-
-
-# class QueryEmbedding(tf.keras.layers.Layer):
-#     def __init__(self, embedding_dim, **kwargs):
-#         super(QueryEmbedding, self).__init__(**kwargs)
-#         self.embedding_dim = embedding_dim
