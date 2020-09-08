@@ -34,5 +34,9 @@ class DownsampleMasking(tf.keras.layers.Layer):
 
 class ReshapeWithMask(tf.keras.layers.Reshape):
     def compute_mask(self, inputs, mask=None):
-        # TODO:
-        pass
+        if mask is not None:
+            # TODO:
+            # mask = tf.reshape(mask, (tf.shape(inputs)[0],) + self.target_shape[:-1])
+            pass
+
+        return mask

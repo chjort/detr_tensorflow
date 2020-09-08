@@ -3,7 +3,7 @@ import numpy as np
 np.random.seed(42)
 import tensorflow as tf
 
-from chambers.layers.masking import DownsampleMasking
+from chambers.layers.masking import DownsampleMasking, ReshapeWithMask
 from chambers.layers.transformer import TransformerEncoder, TransformerDecoder
 from chambers.layers.embedding import PositionalEmbedding2D
 from chambers.models.resnet import ResNet50Backbone
@@ -48,7 +48,7 @@ def DETR(input_shape, n_classes, n_query_embeds, embed_dim, num_heads, dim_feedf
     x_enc = DownsampleMasking()(x_enc)
     x_enc = tf.keras.layers.Conv2D(embed_dim, kernel_size=1, name='input_proj')(x_enc)
     x_enc = PositionalEmbedding2D(embed_dim, normalize=True)(x_enc)
-    x_enc = tf.keras.layers.Reshape([-1, embed_dim])(x_enc)  # (batch_size, h*w, embed_dim)
+    x_enc = ReshapeWithMask([-1, embed_dim])(x_enc)  # (batch_size, h*w, embed_dim)
 
     # x = TransformerEncoder(embed_dim, num_heads, dim_feedforward, num_encoder_layers, dropout_rate, norm=False)(x_enc)
     # x = TransformerDecoderDETR(n_query_embeds, embed_dim, num_heads, dim_feedforward, num_decoder_layers, dropout_rate,
