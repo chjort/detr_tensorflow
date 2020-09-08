@@ -74,15 +74,6 @@ with strategy.scope():
                  loss=hungarian,
                  )
 
-# %%
-detr.query_embed
-detr.summary()
-"""
-Total params: 41,631,008
-Trainable params: 41,524,768
-Non-trainable params: 106,240
-"""
-
 # %% TRAIN
 EPOCHS = 10  # 150
 N_train = 200
