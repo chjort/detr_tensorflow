@@ -6,7 +6,7 @@ from .attention import MultiHeadSelfAttention
 class TransformerEncoderLayer(tf.keras.layers.Layer):
     def __init__(self, embed_dim, num_heads, ff_dim, dropout_rate=0.1, **kwargs):
         super(TransformerEncoderLayer, self).__init__(**kwargs)
-        self.att = MultiHeadSelfAttention(embed_dim, num_heads, name="self_attn")
+        self.att = MultiHeadSelfAttention(embed_dim, num_heads, dropout_rate, name="self_attn")
         self.dropout = tf.keras.layers.Dropout(dropout_rate)
         self.layernorm1 = tf.keras.layers.LayerNormalization(epsilon=1e-5, name="norm1")
 
@@ -15,11 +15,11 @@ class TransformerEncoderLayer(tf.keras.layers.Layer):
         self.linear2 = tf.keras.layers.Dense(embed_dim, name="linear2")
         self.dropout2 = tf.keras.layers.Dropout(dropout_rate)
         self.layernorm2 = tf.keras.layers.LayerNormalization(epsilon=1e-5, name="norm2")
+        self.supports_masking = True
 
     def call(self, inputs, training=None):
         # inputs.shape = [batch_size, sequence_length, embed_dim]
 
-        # TODO: MASKING
         attn_output = self.att([inputs, inputs, inputs])
         attn_output = self.dropout(attn_output, training=training)
         norm_output1 = self.layernorm1(inputs + attn_output)
@@ -36,11 +36,11 @@ class TransformerEncoderLayer(tf.keras.layers.Layer):
 class TransformerDecoderLayer(tf.keras.layers.Layer):
     def __init__(self, embed_dim, num_heads, ff_dim, dropout_rate=0.1, **kwargs):
         super(TransformerDecoderLayer, self).__init__(**kwargs)
-        self.attn1 = MultiHeadSelfAttention(embed_dim, num_heads, name="self_attn")
+        self.attn1 = MultiHeadSelfAttention(embed_dim, num_heads, dropout_rate, name="self_attn")
         self.dropout1 = tf.keras.layers.Dropout(dropout_rate)
         self.layernorm1 = tf.keras.layers.LayerNormalization(epsilon=1e-5, name="norm1")
 
-        self.attn2 = MultiHeadSelfAttention(embed_dim, num_heads, name="multihead_attn")
+        self.attn2 = MultiHeadSelfAttention(embed_dim, num_heads, dropout_rate, name="multihead_attn")
         self.dropout2 = tf.keras.layers.Dropout(dropout_rate)
         self.layernorm2 = tf.keras.layers.LayerNormalization(epsilon=1e-5, name="norm2")
 
@@ -49,6 +49,7 @@ class TransformerDecoderLayer(tf.keras.layers.Layer):
         self.linear2 = tf.keras.layers.Dense(embed_dim, name="linear2")
         self.dropout4 = tf.keras.layers.Dropout(dropout_rate)
         self.layernorm3 = tf.keras.layers.LayerNormalization(epsilon=1e-5, name="norm3")
+        self.supports_masking = True
 
     def call(self, inputs, training=None):
         x, enc_output = inputs
@@ -86,6 +87,7 @@ class TransformerEncoder(tf.keras.layers.Layer):
             self._norm_layer = None
         self.layers = [TransformerEncoderLayer(embed_dim, num_heads, dim_feedforward, dropout_rate)
                        for i in range(num_layers)]
+        self.supports_masking = True
 
     def call(self, inputs, **kwargs):
         x = inputs
@@ -114,6 +116,7 @@ class TransformerDecoder(tf.keras.layers.Layer):
         self.return_sequence = return_sequence
         self.layers = [TransformerDecoderLayer(embed_dim, num_heads, dim_feedforward, dropout_rate)
                        for i in range(num_layers)]
+        self.supports_masking = True
 
     def call(self, inputs, **kwargs):
         x, x_enc = inputs

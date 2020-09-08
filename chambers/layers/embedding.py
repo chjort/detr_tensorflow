@@ -70,7 +70,7 @@ class PositionalEmbedding2D(tf.keras.layers.Layer):
 
         return inputs + positional_mask
 
-    def compute_mask(self, inputs, mask):
+    def compute_mask(self, inputs, mask=None):
         return mask
 
     def compute_positional_mask(self, input_mask):

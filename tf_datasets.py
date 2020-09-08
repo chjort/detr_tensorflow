@@ -2,11 +2,12 @@ import tensorflow as tf
 import tensorflow_datasets as tfds
 
 from chambers.augmentations import random_resize_min, box_normalize_cxcywh, box_denormalize_yxyx, flip_left_right, \
-    random_size_crop
+    random_size_crop, resize, box_normalize_yxyx
 from chambers.utils.boxes import box_yxyx_to_cxcywh, box_xywh_to_yxyx
 from datasets import CocoDetection
 from utils import normalize_image, read_jpeg
 
+N_PARALLEL = -1
 
 def augment(img, boxes, labels):
     img, boxes = tf.cond(tf.random.uniform([1], 0, 1) > 0.5,
@@ -35,7 +36,7 @@ def augment(img, boxes, labels):
 
 
 def augment_val(img, boxes, labels):
-    img, boxes = random_resize_min(img, boxes, min_sides=[800], max_side=1333)
+    img, boxes = resize(img, boxes, min_side=800, max_side=1333)
 
     return img, boxes, labels
 
@@ -44,6 +45,7 @@ def normalize(img, boxes, labels):
     img = normalize_image(img)
     boxes = box_yxyx_to_cxcywh(boxes)
     boxes = box_normalize_cxcywh(boxes, img)
+    # boxes = box_normalize_yxyx(boxes, img)
     return img, boxes, labels
 
 
@@ -53,19 +55,22 @@ def load_coco(coco_path, split, batch_size):
     dataset = dataset.filter(
         lambda img_path, boxes, labels: tf.shape(boxes)[0] > 0)  # remove elements with no annotations
     dataset = dataset.map(
-        lambda img_path, boxes, labels: (read_jpeg(img_path), box_xywh_to_yxyx(boxes), tf.cast(labels, tf.float32)))
+        lambda img_path, boxes, labels: (read_jpeg(img_path), box_xywh_to_yxyx(boxes), tf.cast(labels, tf.float32)),
+        num_parallel_calls=N_PARALLEL
+    )
+    dataset = dataset.cache()
     if split == "train":
-        dataset = dataset.cache("tf_data_cache/coco_train")
         dataset = dataset.repeat()
         # dataset = dataset.shuffle(1024)
-        dataset = dataset.map(augment)
+        # dataset = dataset.map(augment, num_parallel_calls=N_PARALLEL)
+        dataset = dataset.map(augment_val, num_parallel_calls=N_PARALLEL)
     else:
-        dataset = dataset.cache("tf_data_cache/coco_val")
-        dataset = dataset.map(augment_val)
+        dataset = dataset.map(augment_val, num_parallel_calls=N_PARALLEL)
     dataset = dataset.filter(
         lambda img_path, boxes, labels: tf.shape(boxes)[0] > 0)  # remove elements with no annotations
-    dataset = dataset.map(normalize)
-    dataset = dataset.map(lambda img, boxes, labels: (img, tf.concat([boxes, tf.expand_dims(labels, 1)], axis=1)))
+    dataset = dataset.map(normalize, num_parallel_calls=N_PARALLEL)
+    dataset = dataset.map(lambda img, boxes, labels: (img, tf.concat([boxes, tf.expand_dims(labels, 1)], axis=1)),
+                          num_parallel_calls=N_PARALLEL)
 
     dataset = dataset.padded_batch(batch_size=batch_size,
                                    padded_shapes=((None, None, 3), (None, 5)),
@@ -91,17 +96,22 @@ def load_coco_tf(split, batch_size):
     print(info.features)  # bbox format: [y_min, x_min, y_max, x_max]
 
     dataset = dataset.filter(lambda x: tf.shape(x["objects"]["label"])[0] > 0)  # remove elements with no annotations
-    dataset = dataset.map(lambda x: (x["image"], x["objects"]["bbox"], x["objects"]["label"]))
+    dataset = dataset.map(lambda x: (x["image"], x["objects"]["bbox"], x["objects"]["label"]),
+                          num_parallel_calls=N_PARALLEL)
     dataset = dataset.map(
-        lambda x, boxes, labels: (x, box_denormalize_yxyx(boxes, x), tf.cast(labels, tf.float32)))
+        lambda x, boxes, labels: (x, box_denormalize_yxyx(boxes, x), tf.cast(labels, tf.float32)),
+        num_parallel_calls=N_PARALLEL)
+    dataset = dataset.cache()
     if split == "train":
         dataset = dataset.repeat()
         # dataset = dataset.shuffle(1024)
-        dataset = dataset.map(augment)
+        # dataset = dataset.map(augment, num_parallel_calls=N_PARALLEL)
+        dataset = dataset.map(augment_val, num_parallel_calls=N_PARALLEL)
     else:
-        dataset = dataset.map(augment_val)
-    dataset = dataset.map(normalize)
-    dataset = dataset.map(lambda img, boxes, labels: (img, tf.concat([boxes, tf.expand_dims(labels, 1)], axis=1)))
+        dataset = dataset.map(augment_val, num_parallel_calls=N_PARALLEL)
+    dataset = dataset.map(normalize, num_parallel_calls=N_PARALLEL)
+    dataset = dataset.map(lambda img, boxes, labels: (img, tf.concat([boxes, tf.expand_dims(labels, 1)], axis=1)),
+                          num_parallel_calls=N_PARALLEL)
     dataset = dataset.padded_batch(batch_size=batch_size,
                                    padded_shapes=((None, None, 3), (None, 5)),
                                    padding_values=(tf.constant(-1.), tf.constant(-1.))

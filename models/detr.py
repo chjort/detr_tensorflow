@@ -58,7 +58,7 @@ class DETR(tf.keras.Model):
         # inputs shape [batch_size, img_h, img_w, c]
         x = self.mask_layer(inputs)  # [batch_size, img_h, img_w, c]
         x = self.backbone(x, training=training)  # [batch_size, h, w, 2048]
-        x = self.downsample_mask(x)  # [batch_size, h, w, 2048]
+        x = self.downsample_mask(x, mask=x._keras_mask)  # [batch_size, h, w, 2048]
         pos_encoding = self.pos_encoder(x)  # [batch_size, h, w, model_dim]
 
         x = self.input_proj(x)  # [batch_size, h, w, model_dim]

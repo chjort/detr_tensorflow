@@ -3,10 +3,10 @@ import tensorflow as tf
 
 class DownsampleMasking(tf.keras.layers.Layer):
 
-    def call(self, inputs, **kwargs):
+    def call(self, inputs, mask=None, **kwargs):
         # NOTE: 'call' method MUST modify input, in order for new mask to be computed.
 
-        if inputs._keras_mask is not None:
+        if mask is not None:
             boolean_mask = tf.expand_dims(self.compute_mask(inputs, inputs._keras_mask), -1)
             inputs = inputs * tf.cast(boolean_mask, inputs.dtype)
 
@@ -30,3 +30,9 @@ class DownsampleMasking(tf.keras.layers.Layer):
         masks = tf.squeeze(masks, -1)
         masks = tf.cast(masks, tf.bool)
         return masks
+
+
+class ReshapeWithMask(tf.keras.layers.Reshape):
+    def compute_mask(self, inputs, mask=None):
+        # TODO:
+        pass

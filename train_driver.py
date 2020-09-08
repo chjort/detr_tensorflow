@@ -1,13 +1,20 @@
 import os
+
 import tensorflow as tf
 import tensorflow_addons as tfa
 
-from chambers.callbacks import HungarianLossLogger
 from chambers.losses import HungarianLoss, pairwise_softmax, pairwise_l1, pairwise_giou
 from chambers.optimizers import LearningRateMultiplier
-from models import build_detr_resnet50
-from tf_datasets import load_coco_tf, load_coco
 from chambers.utils.utils import timestamp_now
+from models import build_detr_resnet50
+from tf_datasets import load_coco
+
+
+def save_all_weights(model, path):
+    folder, fname = os.path.split(path)
+    os.makedirs(folder, exist_ok=True)
+    model.save_weights(path)
+    tf.saved_model.save(model.optimizer, "{}-opt.{}".format(*path.split(".")[-2:]))
 
 
 def loss_placeholder(y_true, y_pred):
@@ -17,26 +24,23 @@ def loss_placeholder(y_true, y_pred):
     y_true = tf.one_hot(tf.cast(y_true_labels, tf.int32), depth=92)[:, :1, :]
     return tf.keras.losses.categorical_crossentropy(y_true, y_pred, from_logits=True)
 
-
 # %% strategy
 strategy = tf.distribute.MirroredStrategy()
 # strategy = tf.distribute.OneDeviceStrategy("/gpu:0")
-# strategy = tf.distribute.Strategy()
 
 # %%
 BATCH_SIZE_PER_REPLICA = 3
 GLOBAL_BATCH_SIZE = BATCH_SIZE_PER_REPLICA * strategy.num_replicas_in_sync
-# GLOBAL_BATCH_SIZE = BATCH_SIZE_PER_REPLICA
 
-# dataset, N = load_coco_tf("train", GLOBAL_BATCH_SIZE)
+# train_dataset, N_train = load_coco_tf("train", GLOBAL_BATCH_SIZE)
+# val_dataset, N_val = load_coco_tf("val", GLOBAL_BATCH_SIZE)
 train_dataset, N_train = load_coco("/datadrive/crr/datasets/coco", "train", GLOBAL_BATCH_SIZE)
 val_dataset, N_val = load_coco("/datadrive/crr/datasets/coco", "val", GLOBAL_BATCH_SIZE)
 
-dataset = train_dataset.prefetch(-1)
+train_dataset = train_dataset.prefetch(-1)
 
 # %%
 with strategy.scope():
-    # with tf.device("/gpu:0"):
     decode_sequence = False
     detr = build_detr_resnet50(num_classes=91,
                                num_queries=100,
@@ -70,6 +74,15 @@ with strategy.scope():
                  loss=hungarian,
                  )
 
+# %%
+detr.query_embed
+detr.summary()
+"""
+Total params: 41,631,008
+Trainable params: 41,524,768
+Non-trainable params: 106,240
+"""
+
 # %% TRAIN
 EPOCHS = 10  # 150
 N_train = 200
@@ -90,19 +103,19 @@ history = detr.fit(train_dataset,
                    validation_steps=VAL_STEPS,
                    callbacks=[
                        # HungarianLossLogger(),
-                       # tensorboard
                        # tf.keras.callbacks.ModelCheckpoint(filepath=output_path,
                        #                                    monitor="val_loss",
                        #                                    save_best_only=False,
                        #                                    save_weights_only=False
                        #                                    )
+                       # tensorboard
                    ]
                    )
 
-#%%
+# %%
 # Single GPU:
 """
-10 epochs (placeholder)
+bz4, 10 epochs (placeholder)
 50/50 [==============================] - 129s 3s/step - loss: 4.5206
 Epoch 2/10
 50/50 [==============================] - 101s 2s/step - loss: 4.5180
@@ -123,7 +136,7 @@ Epoch 9/10
 Epoch 10/10
 50/50 [==============================] - 84s 2s/step - loss: 4.5166
 
-10 epochs (hungarian)
+bz4, 10 epochs (hungarian)
 50/50 [==============================] - 130s 3s/step - loss: 11.8833 - loss_ce: 4.5189 - loss_l1: 5.2441 - loss_giou: 2.1202
 Epoch 2/10
 50/50 [==============================] - 101s 2s/step - loss: 11.6155 - loss_ce: 4.5129 - loss_l1: 5.0268 - loss_giou: 2.0758
@@ -148,7 +161,7 @@ Epoch 10/10
 
 # 2 GPU:
 """
-10 epochs (placeholder)
+bz4, 10 epochs (placeholder)
 25/25 [==============================] - 109s 4s/step - loss: 4.5211
 Epoch 2/10
 25/25 [==============================] - 65s 3s/step - loss: 4.5197
@@ -169,7 +182,7 @@ Epoch 9/10
 Epoch 10/10
 25/25 [==============================] - 46s 2s/step - loss: 4.5160
 
-10 epochs (placeholder, no prefetch)
+bz4, 10 epochs (placeholder, no prefetch)
 25/25 [==============================] - 106s 4s/step - loss: 4.5211
 Epoch 2/10
 25/25 [==============================] - 65s 3s/step - loss: 4.5197
@@ -190,7 +203,7 @@ Epoch 9/10
 Epoch 10/10
 25/25 [==============================] - 46s 2s/step - loss: 4.5160
 
-10 epochs (hungarian)
+bz4, 10 epochs (hungarian)
 25/25 [==============================] - 129s 5s/step - loss: 11.8861
 Epoch 2/10
 25/25 [==============================] - 81s 3s/step - loss: 11.6242
@@ -211,28 +224,47 @@ Epoch 9/10
 Epoch 10/10
 25/25 [==============================] - 61s 2s/step - loss: 11.7179
 
-TODO: 10 epochs (hungarian, no prefetch)
-25/25 [==============================] - 129s 5s/step - loss: 11.8861
+bz3, 10 epochs (hungarian)
+34/33 [==============================] - 137s 4s/step - loss: 11.7772
 Epoch 2/10
-25/25 [==============================] - 81s 3s/step - loss: 11.6242
+34/33 [==============================] - 87s 3s/step - loss: 11.5578
 Epoch 3/10
-25/25 [==============================] - 67s 3s/step - loss: 12.0430
+34/33 [==============================] - 78s 2s/step - loss: 12.0188
 Epoch 4/10
-25/25 [==============================] - 78s 3s/step - loss: 11.9534
+34/33 [==============================] - 84s 2s/step - loss: 11.8673
 Epoch 5/10
-25/25 [==============================] - 71s 3s/step - loss: 11.8452
+34/33 [==============================] - 79s 2s/step - loss: 11.8327
 Epoch 6/10
-25/25 [==============================] - 72s 3s/step - loss: 11.7589
+34/33 [==============================] - 72s 2s/step - loss: 11.7902
 Epoch 7/10
-25/25 [==============================] - 71s 3s/step - loss: 11.7853
+34/33 [==============================] - 83s 2s/step - loss: 11.7559
 Epoch 8/10
-25/25 [==============================] - 75s 3s/step - loss: 11.7085
+34/33 [==============================] - 85s 3s/step - loss: 11.6861
 Epoch 9/10
-25/25 [==============================] - 69s 3s/step - loss: 11.8199
+34/33 [==============================] - 77s 2s/step - loss: 11.7533
 Epoch 10/10
-25/25 [==============================] - 61s 2s/step - loss: 11.7179
+34/33 [==============================] - 74s 2s/step - loss: 11.5542
 
 
-TODO: 10 epochs (hungarian, no prefetch, loss+compile in context)
+bz3, 10 epochs (hungarian, loss+compile in context)
+34/33 [==============================] - 130s 4s/step - loss: 11.7772
+Epoch 2/10
+34/33 [==============================] - 76s 2s/step - loss: 11.5578
+Epoch 3/10
+34/33 [==============================] - 64s 2s/step - loss: 12.0188
+Epoch 4/10
+34/33 [==============================] - 71s 2s/step - loss: 11.8673
+Epoch 5/10
+34/33 [==============================] - 67s 2s/step - loss: 11.8327
+Epoch 6/10
+34/33 [==============================] - 60s 2s/step - loss: 11.7902
+Epoch 7/10
+34/33 [==============================] - 72s 2s/step - loss: 11.7559
+Epoch 8/10
+34/33 [==============================] - 72s 2s/step - loss: 11.6861
+Epoch 9/10
+34/33 [==============================] - 65s 2s/step - loss: 11.7533
+Epoch 10/10
+34/33 [==============================] - 62s 2s/step - loss: 11.5542
 
 """
