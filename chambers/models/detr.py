@@ -9,6 +9,7 @@ from chambers.layers.embedding import PositionalEmbedding2D
 from chambers.models.resnet import ResNet50Backbone
 from chambers.utils.tf import set_supports_masking
 
+
 class TransformerDecoderDETR(TransformerDecoder):
     """
     A standard transformer decoder with its target input fixed to be query embeddings.
@@ -48,7 +49,9 @@ def DETR(input_shape, n_classes, n_query_embeds, embed_dim, num_heads, dim_feedf
     x_enc = DownsampleMasking()(x_enc)
     x_enc = tf.keras.layers.Conv2D(embed_dim, kernel_size=1, name='input_proj')(x_enc)
     x_enc = PositionalEmbedding2D(embed_dim, normalize=True)(x_enc)
-    x_enc = ReshapeWithMask([-1, embed_dim])(x_enc)  # (batch_size, h*w, embed_dim)
+    # x_enc = tf.keras.layers.Reshape([-1, embed_dim])(x_enc)  # (batch_size, h*w, embed_dim)
+
+    # x_enc = ReshapeWithMask([-1, embed_dim])(x_enc)  # (batch_size, h*w, embed_dim)
 
     # x = TransformerEncoder(embed_dim, num_heads, dim_feedforward, num_encoder_layers, dropout_rate, norm=False)(x_enc)
     # x = TransformerDecoderDETR(n_query_embeds, embed_dim, num_heads, dim_feedforward, num_decoder_layers, dropout_rate,
@@ -105,3 +108,36 @@ print(x1.shape)
 z = model(x1)
 print(z.shape)
 print(z._keras_mask.shape)
+
+# %%
+inputs = z
+mask = z._keras_mask
+
+last_dim = tf.shape(inputs)[-1]
+multiples = tf.concat([tf.ones(tf.rank(mask), dtype=tf.int32), [last_dim]], axis=0)
+mask = tf.expand_dims(mask, -1)
+mask = tf.tile(mask, multiples)
+mask.shape
+
+target_shape = [batch_size, -1, 256]
+ri, rm = tf.reshape(inputs, target_shape), tf.reshape(mask, target_shape)[..., 0]
+print(ri.shape, rm.shape)
+
+target_shape = [batch_size, 28, -1]
+ri, rm = tf.reshape(inputs, target_shape), tf.reshape(mask, target_shape)[..., 0]
+print(ri.shape, rm.shape)
+
+target_shape = [batch_size, -1, 8]
+ri, rm = tf.reshape(inputs, target_shape), tf.reshape(mask, target_shape)[..., 0]
+print(ri.shape, rm.shape)
+
+target_shape = [batch_size, -1]
+ri, rm = tf.reshape(inputs, target_shape), tf.reshape(mask, target_shape)[..., 0]
+print(ri.shape, rm.shape)
+
+# %%
+r = model.layers[-1]
+print(r.input_shape, z._keras_mask.shape)
+print(r.target_shape)
+print(r.compute_output_shape(r.input_shape))
+# print(r.compute_output_shape(r.input_shape), r._fix_unknown_dimension(r.input_shape[1:], r.target_shape))
