@@ -3,6 +3,7 @@ import tensorflow as tf
 
 from chambers.utils.boxes import box_cxcywh_to_yxyx
 from chambers.utils.tf import batch_linear_sum_assignment, repeat_indices
+from .pairwise import get
 from .iou import GIoULoss
 from .losses import L1Loss
 
@@ -21,7 +22,7 @@ class HungarianLoss(tf.keras.losses.Loss):
                  **kwargs):
         self.mask_value = mask_value
         self.sequence_input = sequence_input
-        self.lsa_losses = lsa_losses
+        self.lsa_losses = [get(lsa_loss) for lsa_loss in lsa_losses]
         self.lsa_loss_weights = lsa_loss_weights
 
         self.weighted_cross_entropy_loss = WeightedSparseCategoricalCrossEntropyCocoDETR(

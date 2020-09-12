@@ -1,7 +1,8 @@
 import tensorflow as tf
 
-from chambers.utils.boxes import box_cxcywh_to_xyxy, boxes_giou, box_yxyx_to_xyxy
+from chambers.utils.boxes import box_cxcywh_to_xyxy, boxes_giou
 from chambers.utils.tf import pairwise_l1 as _pairwise_l1
+from chambers.utils.utils import deserialize_object
 
 
 def pairwise_giou(y_true, y_pred):
@@ -56,3 +57,20 @@ def pairwise_softmax(y_true, y_pred):
     y_true = tf.cast(y_true, tf.int32)
 
     return tf.vectorized_map(lambda inp: -tf.gather(*inp, axis=-1), (y_pred, y_true))
+
+
+def get(identifier, **kwargs):
+    if type(identifier) is str:
+        module_objs = globals()
+        return deserialize_object(identifier,
+                                  module_objects=module_objs,
+                                  module_name=module_objs.get("__name__"),
+                                  **kwargs
+                                  )
+    elif issubclass(identifier.__class__, type):
+        return identifier(**kwargs)
+    elif callable(identifier):
+        return identifier
+    else:
+        raise TypeError(
+            'Could not interpret encoder model identifier: {}'.format(identifier))
