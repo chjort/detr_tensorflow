@@ -19,7 +19,6 @@ class TransformerEncoderLayer(tf.keras.layers.Layer):
 
     def call(self, inputs, training=None):
         # inputs.shape = [batch_size, sequence_length, embed_dim]
-
         attn_output = self.att([inputs, inputs, inputs])
         attn_output = self.dropout(attn_output, training=training)
         norm_output1 = self.layernorm1(inputs + attn_output)
@@ -53,8 +52,6 @@ class TransformerDecoderLayer(tf.keras.layers.Layer):
 
     def call(self, inputs, training=None):
         x, enc_output = inputs
-
-        # TODO: MASKING
 
         attn_output1 = self.attn1([x, x, x])
         attn_output1 = self.dropout1(attn_output1, training=training)
@@ -116,7 +113,6 @@ class TransformerDecoder(tf.keras.layers.Layer):
         self.return_sequence = return_sequence
         self.layers = [TransformerDecoderLayer(embed_dim, num_heads, dim_feedforward, dropout_rate)
                        for i in range(num_layers)]
-        self.supports_masking = True
 
     def call(self, inputs, **kwargs):
         x, x_enc = inputs
@@ -135,3 +131,6 @@ class TransformerDecoder(tf.keras.layers.Layer):
             x = tf.transpose(x, [1, 0, 2, 3])
 
         return x
+
+    def compute_mask(self, inputs, mask=None):
+        return None

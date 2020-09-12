@@ -62,8 +62,8 @@ def load_coco(coco_path, split, batch_size):
     if split == "train":
         dataset = dataset.repeat()
         # dataset = dataset.shuffle(1024)
-        dataset = dataset.map(augment, num_parallel_calls=N_PARALLEL)
-        # dataset = dataset.map(augment_val, num_parallel_calls=N_PARALLEL)
+        # dataset = dataset.map(augment, num_parallel_calls=N_PARALLEL)
+        dataset = dataset.map(augment_val, num_parallel_calls=N_PARALLEL)
     else:
         dataset = dataset.map(augment_val, num_parallel_calls=N_PARALLEL)
     dataset = dataset.filter(
@@ -105,8 +105,8 @@ def load_coco_tf(split, batch_size):
     if split == "train":
         dataset = dataset.repeat()
         # dataset = dataset.shuffle(1024)
-        dataset = dataset.map(augment, num_parallel_calls=N_PARALLEL)
-        # dataset = dataset.map(augment_val, num_parallel_calls=N_PARALLEL)
+        # dataset = dataset.map(augment, num_parallel_calls=N_PARALLEL)
+        dataset = dataset.map(augment_val, num_parallel_calls=N_PARALLEL)
     else:
         dataset = dataset.map(augment_val, num_parallel_calls=N_PARALLEL)
     dataset = dataset.map(normalize, num_parallel_calls=N_PARALLEL)

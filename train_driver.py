@@ -6,7 +6,8 @@ import tensorflow_addons as tfa
 from chambers.losses import HungarianLoss, pairwise_softmax, pairwise_l1, pairwise_giou
 from chambers.optimizers import LearningRateMultiplier
 from chambers.utils.utils import timestamp_now
-from models import build_detr_resnet50
+# from models import build_detr_resnet50
+from chambers.models.detr import DETR
 from tf_datasets import load_coco
 
 
@@ -42,11 +43,24 @@ train_dataset = train_dataset.prefetch(-1)
 # %%
 with strategy.scope():
     decode_sequence = False
-    detr = build_detr_resnet50(num_classes=91,
-                               num_queries=100,
-                               mask_value=-1.,
-                               return_decode_sequence=decode_sequence)
-    detr.build()
+    detr = DETR(input_shape=(None, None, 3),
+                n_classes=91,
+                n_query_embeds=100,
+                embed_dim=256,
+                num_heads=8,
+                dim_feedforward=2048,
+                num_encoder_layers=6,
+                num_decoder_layers=6,
+                dropout_rate=0.1,
+                return_decode_sequence=decode_sequence,
+                mask_value=-1.
+                )
+
+    # detr = build_detr_resnet50(num_classes=91,
+    #                            num_queries=100,
+    #                            mask_value=-1.,
+    #                            return_decode_sequence=decode_sequence)
+    # detr.build()
     # detr.load_from_pickle('checkpoints/detr-r50-e632da11.pickle')
 
     # 150 epoch schedule: lr = lr * 0.1 after 100 epochs

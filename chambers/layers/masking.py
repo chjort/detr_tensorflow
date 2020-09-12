@@ -32,11 +32,31 @@ class DownsampleMasking(tf.keras.layers.Layer):
         return masks
 
 
-class ReshapeWithMask(tf.keras.layers.Reshape):
+class _ReshapeWithMaskAUTO(tf.keras.layers.Reshape):
     def compute_mask(self, inputs, mask=None):
         if mask is not None:
-            # TODO:
-            # mask = tf.reshape(mask, (tf.shape(inputs)[0],) + self.target_shape[:-1])
-            pass
+            last_dim = tf.shape(inputs)[-1]
+            multiples = tf.concat([tf.ones(tf.rank(mask), dtype=tf.int32), [last_dim]], axis=0)
+            mask = tf.expand_dims(mask, -1)
+            mask = tf.tile(mask, multiples)
+            mask = tf.reshape(mask, (tf.shape(inputs)[0],) + self.target_shape)[..., 0]
 
         return mask
+
+
+class ReshapeWithMask(tf.keras.layers.Reshape):
+    def __init__(self, target_shape, target_mask_shape, **kwargs):
+        super(ReshapeWithMask, self).__init__(target_shape, **kwargs)
+        self.target_mask_shape = tuple(target_mask_shape)
+
+    def compute_mask(self, inputs, mask=None):
+        if mask is not None:
+            mask = tf.expand_dims(mask, -1)
+            mask = tf.reshape(mask, (tf.shape(inputs)[0],) + self.target_mask_shape)
+
+        return mask
+
+    def get_config(self):
+        config = {'target_mask_shape': self.target_mask_shape}
+        base_config = super(ReshapeWithMask, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))
