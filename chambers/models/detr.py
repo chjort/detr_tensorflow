@@ -6,8 +6,8 @@ import tensorflow as tf
 from chambers.layers.masking import DownsampleMasking, ReshapeWithMask
 from chambers.layers.transformer import TransformerEncoder, TransformerDecoder
 from chambers.layers.embedding import PositionalEmbedding2D
-from chambers.models.resnet import ResNet50Backbone
-# from models.backbone import ResNet50Backbone
+# from chambers.models.resnet import ResNet50Backbone
+from models.backbone import ResNet50Backbone
 from chambers.utils.tf import set_supports_masking
 
 
@@ -23,14 +23,15 @@ class TransformerDecoderDETR(TransformerDecoder):
         super(TransformerDecoderDETR, self).__init__(embed_dim, num_heads, ff_dim, num_layers, dropout_rate,
                                                      norm, return_sequence, **kwargs)
         self.n_query_embeds = n_query_embeds
-        self.query_embeddings = tf.keras.layers.Embedding(n_query_embeds, embed_dim)
+        self.query_embeddings = self.add_weight("query_embeddings",
+                                                shape=[1, n_query_embeds, embed_dim],
+                                                initializer="zeros")
 
     def call(self, inputs, **kwargs):
         # `inputs` are the encoder output
 
         batch_size = tf.shape(inputs)[0]
-        x = tf.tile(tf.expand_dims(tf.range(self.n_query_embeds), 0), [batch_size, 1])
-        x = self.query_embeddings(x)
+        x = tf.tile(self.query_embeddings, [batch_size, 1, 1])
 
         x = super().call([x, inputs], **kwargs)
 
@@ -54,8 +55,8 @@ def DETR(input_shape, n_classes, n_query_embeds, embed_dim, num_heads, dim_feedf
     # backbone = tf.keras.applications.ResNet50(input_shape=input_shape,
     #                                           include_top=False,
     #                                           weights="imagenet")
-    # backbone = ResNet50Backbone(name="backbone/0/body")
-    backbone = ResNet50Backbone(input_shape)
+    backbone = ResNet50Backbone(name="backbone/0/body")
+    # backbone = ResNet50Backbone(input_shape)
     x_enc = backbone(x_enc)
 
     x_enc = DownsampleMasking()(x_enc)
@@ -87,6 +88,39 @@ def DETR(input_shape, n_classes, n_query_embeds, embed_dim, num_heads, dim_feedf
     model = tf.keras.models.Model(inputs, x, name=name)
 
     return model
+
+
+def load_detr(path):
+    if path.endswith(".h5") or path.endswith(".hdf5"):
+        from tensorflow_addons.optimizers import AdamW
+        from chambers.layers.batch_norm import FrozenBatchNorm2D
+        from chambers.layers.masking import ReshapeWithMask, DownsampleMasking
+        from chambers.layers.embedding import PositionalEmbedding2D
+        from chambers.layers.transformer import TransformerEncoder
+        from chambers.models.detr import TransformerDecoderDETR
+        from chambers.optimizers import LearningRateMultiplier
+        from chambers.losses.hungarian import HungarianLoss
+        tf.keras.models.Model.save()
+        detr = tf.keras.models.load_model(path,
+                                          custom_objects={
+                                              "FrozenBatchNorm2D": FrozenBatchNorm2D,
+                                              "DownsampleMasking": DownsampleMasking,
+                                              "PositionalEmbedding2D": PositionalEmbedding2D,
+                                              "ReshapeWithMask": ReshapeWithMask,
+                                              "TransformerEncoder": TransformerEncoder,
+                                              "TransformerDecoderDETR": TransformerDecoderDETR,
+                                              "LearningRateMultiplier": LearningRateMultiplier,
+                                              "Addons>AdamW": AdamW,
+                                              "HungarianLoss": HungarianLoss
+                                          })
+    else:
+        from chambers.losses.hungarian import HungarianLoss
+        detr = tf.keras.models.load_model(path,
+                                          custom_objects={
+                                              "HungarianLoss": HungarianLoss
+                                          })
+
+    return detr
 
 # %%
 # num_classes = 91
