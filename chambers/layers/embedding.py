@@ -40,6 +40,11 @@ class PositionalEmbedding1D(tf.keras.layers.Layer):
 
         return tf.cast(pos_encoding, dtype=tf.float32)
 
+    def get_config(self):
+        config = {'embedding_dim': self.embedding_dim, "temperature": self.temperature}
+        base_config = super(PositionalEmbedding1D, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))
+
 
 class PositionalEmbedding2D(tf.keras.layers.Layer):
     # These are the default parameters used in the original project
@@ -99,3 +104,9 @@ class PositionalEmbedding2D(tf.keras.layers.Layer):
 
         pos_emb = tf.concat([pos_y, pos_x], axis=3)
         return pos_emb
+
+    def get_config(self):
+        config = {'embedding_dim': self.embedding_dim, "temperature": self.temperature,
+                  "normalize": self.normalize, "scale": self.scale, "eps": self.eps}
+        base_config = super(PositionalEmbedding2D, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))

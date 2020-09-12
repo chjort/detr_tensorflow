@@ -23,3 +23,8 @@ class FrozenBatchNorm2D(tf.keras.layers.Layer):
 
     def compute_output_shape(self, input_shape):
         return input_shape
+
+    def get_config(self):
+        config = {'eps': self.eps}
+        base_config = super(FrozenBatchNorm2D, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))

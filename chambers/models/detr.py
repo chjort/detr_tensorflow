@@ -7,6 +7,7 @@ from chambers.layers.masking import DownsampleMasking, ReshapeWithMask
 from chambers.layers.transformer import TransformerEncoder, TransformerDecoder
 from chambers.layers.embedding import PositionalEmbedding2D
 from chambers.models.resnet import ResNet50Backbone
+# from models.backbone import ResNet50Backbone
 from chambers.utils.tf import set_supports_masking
 
 
@@ -17,9 +18,9 @@ class TransformerDecoderDETR(TransformerDecoder):
 
     """
 
-    def __init__(self, n_query_embeds, embed_dim, num_heads, dim_feedforward, num_layers, dropout_rate=0.1, norm=False,
+    def __init__(self, n_query_embeds, embed_dim, num_heads, ff_dim, num_layers, dropout_rate=0.1, norm=False,
                  return_sequence=False, **kwargs):
-        super(TransformerDecoderDETR, self).__init__(embed_dim, num_heads, dim_feedforward, num_layers, dropout_rate,
+        super(TransformerDecoderDETR, self).__init__(embed_dim, num_heads, ff_dim, num_layers, dropout_rate,
                                                      norm, return_sequence, **kwargs)
         self.n_query_embeds = n_query_embeds
         self.query_embeddings = tf.keras.layers.Embedding(n_query_embeds, embed_dim)
@@ -35,6 +36,11 @@ class TransformerDecoderDETR(TransformerDecoder):
 
         return x
 
+    def get_config(self):
+        config = {"n_query_embeds": self.n_query_embeds}
+        base_config = super(TransformerDecoderDETR, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))
+
 
 def DETR(input_shape, n_classes, n_query_embeds, embed_dim, num_heads, dim_feedforward, num_encoder_layers,
          num_decoder_layers, dropout_rate=0.1, return_decode_sequence=False, mask_value=None, name="detr"):
@@ -45,6 +51,10 @@ def DETR(input_shape, n_classes, n_query_embeds, embed_dim, num_heads, dim_feedf
     else:
         x_enc = inputs
 
+    # backbone = tf.keras.applications.ResNet50(input_shape=input_shape,
+    #                                           include_top=False,
+    #                                           weights="imagenet")
+    # backbone = ResNet50Backbone(name="backbone/0/body")
     backbone = ResNet50Backbone(input_shape)
     x_enc = backbone(x_enc)
 
@@ -78,8 +88,7 @@ def DETR(input_shape, n_classes, n_query_embeds, embed_dim, num_heads, dim_feedf
 
     return model
 
-
-# # %%
+# %%
 # num_classes = 91
 # embed_dim = 256
 # n_query_embeds_ = 100
@@ -100,10 +109,26 @@ def DETR(input_shape, n_classes, n_query_embeds, embed_dim, num_heads, dim_feedf
 #              return_decode_sequence=return_sequence,
 #              mask_value=-1.
 #              )
-#
 # model.summary()
+
+
+# %%
+# from chambers.optimizers import LearningRateMultiplier
 #
-# # %%
+# [v.name for v in model.get_layer("resnet50").variables]
+#
+#
+# opt = LearningRateMultiplier(tf.keras.optimizers.Adam(), {"resnet50": 1e-5})
+#
+# mults = opt._get_params_multipliers(model.variables)
+# mults.keys()
+# len(mults[1e-5])
+
+# [v.name for v in model.variables]
+
+# %%
+
+
 # x1 = np.random.normal(size=(batch_size, 544, 896, 3))
 # x1 = np.pad(x1, [(0, 0), (0, 352), (0, 320), (0, 0)], mode="constant", constant_values=-1.)
 # print(x1.shape)

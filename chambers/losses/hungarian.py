@@ -17,7 +17,8 @@ class HungarianLoss(tf.keras.losses.Loss):
 
     """
 
-    def __init__(self, lsa_losses, lsa_loss_weights=None, mask_value=None, sequence_input=False, name="hungarian_loss"):
+    def __init__(self, lsa_losses, lsa_loss_weights=None, mask_value=None, sequence_input=False, name="hungarian_loss",
+                 **kwargs):
         self.mask_value = mask_value
         self.sequence_input = sequence_input
         self.lsa_losses = lsa_losses
@@ -176,6 +177,12 @@ class HungarianLoss(tf.keras.losses.Loss):
         prediction_idx = tf.transpose(indcs[:, :, 0])
         target_idx = tf.transpose(indcs[:, :, 1])
         return prediction_idx, target_idx
+
+    def get_config(self):
+        config = {"lsa_losses": self.lsa_losses, "lsa_loss_weights": self.lsa_loss_weights,
+                  "mask_value": self.mask_value, "sequence_input": self.sequence_input}
+        base_config = super(HungarianLoss, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))
 
 
 def weighted_cross_entropy_loss_coco_detr(y_true, y_pred):
