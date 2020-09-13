@@ -67,9 +67,9 @@ def DETR(input_shape, n_classes, n_query_embeds, embed_dim, num_heads, dim_feedf
         set_supports_masking(backbone, verbose=False)
         proj.supports_masking = True
 
-    x = TransformerEncoder(embed_dim, num_heads, dim_feedforward, num_encoder_layers, dropout_rate, norm=False)(x_enc)
+    enc_output = TransformerEncoder(embed_dim, num_heads, dim_feedforward, num_encoder_layers, dropout_rate, norm=False)(x_enc)
     x = TransformerDecoderDETR(n_query_embeds, embed_dim, num_heads, dim_feedforward, num_decoder_layers, dropout_rate,
-                               norm=True, return_sequence=return_decode_sequence)(x)
+                               norm=True, return_sequence=return_decode_sequence)(enc_output)
 
     n_classes = n_classes + 1  # Add 1 for the "Nothing" class
     x_class = tf.keras.layers.Dense(n_classes, name="class_embed")(x)
