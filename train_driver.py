@@ -112,6 +112,7 @@ history = detr.fit(train_dataset,
                    )
 
 """ TODO:
+* Make TransformerEncoderDETR and TransformerDecoderDETR propagate inputs without overriding `call`. 
 * Have the box targets be yxyx format, not cxcywh format.
 * How to log all parts of hungarian loss
 * Log difference between model loss/metrics to FB loss/metrics
