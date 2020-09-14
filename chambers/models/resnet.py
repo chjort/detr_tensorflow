@@ -1,7 +1,8 @@
 import tensorflow as tf
 from tensorflow.keras.layers import ZeroPadding2D, Conv2D, ReLU, MaxPool2D
 
-from chambers.layers.batch_norm import FrozenBatchNorm2D
+# from chambers.layers.batch_norm import FrozenBatchNorm2D
+FrozenBatchNorm2D = tf.keras.layers.BatchNormalization
 
 
 def ResNet50Backbone(input_shape, replace_stride_with_dilation=[False, False, False], name="resnet50"):
@@ -25,7 +26,7 @@ def ResNet50Backbone(input_shape, replace_stride_with_dilation=[False, False, Fa
 
 def ResNet101Backbone(input_shape, replace_stride_with_dilation=[False, False, False], name="resnet101"):
     inputs = tf.keras.layers.Input(input_shape)
-    x = ConvBlock(inputs)
+    x = ConvBlock(inputs, name_prefix=name + "/")
     x = ResidualBlock(x, num_bottlenecks=3, dim1=64, dim2=256, strides=1, replace_stride_with_dilation=False,
                       name_prefix=name + "/layer1/")
     x = ResidualBlock(x, num_bottlenecks=4, dim1=128, dim2=512, strides=2,

@@ -4,7 +4,6 @@ import tensorflow as tf
 import tensorflow_addons as tfa
 
 from chambers.losses import HungarianLoss, pairwise_softmax, pairwise_l1, pairwise_giou
-# from models import build_detr_resnet50
 from chambers.models.detr import DETR, load_detr
 from chambers.optimizers import LearningRateMultiplier
 from chambers.utils.utils import timestamp_now
@@ -64,12 +63,6 @@ with strategy.scope():
                     mask_value=-1.
                     )
 
-        # detr = build_detr_resnet50(num_classes=91,
-        #                            num_queries=100,
-        #                            mask_value=-1.,
-        #                            return_decode_sequence=decode_sequence)
-        # detr.build()
-
         # 150 epoch schedule: lr = lr * 0.1 after 100 epochs
         lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(initial_learning_rate=1e-4,
                                                                      decay_steps=100,
@@ -95,6 +88,8 @@ with strategy.scope():
                      loss=hungarian,
                      )
 
+detr.save("outputs/keras_model.h5")
+
 # %% TRAIN
 EPOCHS = 5  # 150
 N_train = 200
@@ -106,11 +101,11 @@ print("Number of devices in strategy:", strategy.num_replicas_in_sync)
 print("Global batch size: {}. Per device batch size: {}".format(GLOBAL_BATCH_SIZE, BATCH_SIZE_PER_REPLICA))
 
 # ssh -L 6006:127.0.0.1:6006 crr@40.68.160.55
-# tensorboard = tf.keras.callbacks.TensorBoard(log_dir="tb_logs", write_graph=False, update_freq="epoch", profile_batch=0)
+tensorboard = tf.keras.callbacks.TensorBoard(log_dir="tb_logs", write_graph=True, update_freq="epoch", profile_batch=0)
 
-# model_dir = os.path.join("outputs", timestamp_now())
-# os.makedirs(model_dir, exist_ok=True)
-# model_file = os.path.join(model_dir, "model-epoch{epoch}.h5")
+model_dir = os.path.join("outputs", timestamp_now())
+os.makedirs(model_dir, exist_ok=True)
+model_file = os.path.join(model_dir, "model-epoch{epoch}.h5")
 history = detr.fit(train_dataset,
                    validation_data=val_dataset,
                    epochs=EPOCHS,
@@ -118,12 +113,12 @@ history = detr.fit(train_dataset,
                    validation_steps=VAL_STEPS,
                    callbacks=[
                        # HungarianLossLogger(),
-                       # tf.keras.callbacks.ModelCheckpoint(filepath=model_file,
-                       #                                    monitor="val_loss",
-                       #                                    save_best_only=False,
-                       #                                    save_weights_only=False
-                       #                                    )
-                       # tensorboard
+                       tf.keras.callbacks.ModelCheckpoint(filepath=model_file,
+                                                          monitor="val_loss",
+                                                          save_best_only=False,
+                                                          save_weights_only=False
+                                                          ),
+                       tensorboard
                    ]
                    )
 
@@ -310,7 +305,7 @@ Epoch 5/5
 
 """
 
-#%%
+# %%
 # import json
 # with open("fb_log.txt", "r") as f:
 #     dicts = f.read().split("\n")

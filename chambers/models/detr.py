@@ -6,9 +6,9 @@ np.random.seed(42)
 import tensorflow as tf
 
 from chambers.layers.masking import DownsampleMasking, ReshapeWithMask
-from chambers.layers.transformer import TransformerDecoder, TransformerEncoderLayer, \
-    BaseTransformerEncoder, TransformerEncoder
-from chambers.layers.embedding import PositionalEmbedding2D
+from chambers.layers.transformer import BaseTransformerDecoder, TransformerEncoderLayer, \
+    BaseTransformerEncoder, TransformerDecoderLayer
+from chambers.layers.embedding import PositionalEmbedding2D, LearnedEmbedding
 from chambers.models.resnet import ResNet50Backbone
 from chambers.utils.tf import set_supports_masking
 
@@ -17,8 +17,7 @@ class TransformerEncoderLayerDETR(TransformerEncoderLayer):
     def call(self, inputs, training=None):
         v, pos_encoding = inputs
 
-        q = v + pos_encoding
-        k = v + pos_encoding
+        q = k = v + pos_encoding
 
         attn_output = self.att([q, k, v])
         attn_output = self.dropout(attn_output, training=training)
@@ -31,6 +30,32 @@ class TransformerEncoderLayerDETR(TransformerEncoderLayer):
         norm_output2 = self.layernorm2(norm_output1 + ffn_output)
 
         return norm_output2
+
+
+class TransformerDecoderLayerDETR(TransformerDecoderLayer):
+    def call(self, inputs, training=None):
+        v, enc_output, pos_enc, object_enc = inputs
+
+        q = k = v + object_enc
+
+        attn_output1 = self.attn1([q, k, v])
+        attn_output1 = self.dropout1(attn_output1, training=training)
+        norm_output1 = self.layernorm1(v + attn_output1)
+
+        q = norm_output1 + object_enc
+        k = enc_output + pos_enc
+
+        attn_output2 = self.attn2([q, k, enc_output])
+        attn_output2 = self.dropout2(attn_output2)
+        norm_output2 = self.layernorm2(norm_output1 + attn_output2)
+
+        ffn_output = self.linear1(norm_output1)
+        ffn_output = self.dropout3(ffn_output, training=training)
+        ffn_output = self.linear2(ffn_output)
+        ffn_output = self.dropout4(ffn_output, training=training)
+        norm_output3 = self.layernorm3(norm_output2 + ffn_output)
+
+        return norm_output3
 
 
 class TransformerEncoderDETR(BaseTransformerEncoder):
@@ -63,72 +88,51 @@ class TransformerEncoderDETR(BaseTransformerEncoder):
         return dict(list(base_config.items()) + list(config.items()))
 
 
-class TransformerDecoderDETR(TransformerDecoder):
-    """
-    A standard transformer decoder with its target input fixed to be query embeddings.
-    Therefore, this decoder only takes input from an encoder.
-
-    """
+class TransformerDecoderDETR(BaseTransformerDecoder):
 
     def __init__(self, n_query_embeds, embed_dim, num_heads, ff_dim, num_layers, dropout_rate=0.1, norm=False,
                  return_sequence=False, **kwargs):
-        super(TransformerDecoderDETR, self).__init__(embed_dim, num_heads, ff_dim, num_layers, dropout_rate,
-                                                     norm, return_sequence, **kwargs)
+        self.embed_dim = embed_dim
+        self.num_heads = num_heads
+        self.ff_dim = ff_dim
+        self.num_layers = num_layers
+        self.dropout_rate = dropout_rate
+
         self.n_query_embeds = n_query_embeds
-        self.query_embeddings = self.add_weight("query_embeddings",
-                                                shape=[1, n_query_embeds, embed_dim],
-                                                initializer="zeros")
+        self.object_queries_layer = LearnedEmbedding(n_query_embeds, embed_dim, add_to_input=False)
+
+        layers = [TransformerDecoderLayerDETR(embed_dim, num_heads, ff_dim, dropout_rate)
+                  for i in range(num_layers)]
+        super(TransformerDecoderDETR, self).__init__(layers=layers, norm=norm, return_sequence=return_sequence,
+                                                     **kwargs)
 
     def call(self, inputs, **kwargs):
-        # `inputs` are the encoder output
+        enc_output, pos_enc = inputs
 
-        batch_size = tf.shape(inputs)[0]
-        x = tf.tile(self.query_embeddings, [batch_size, 1, 1])
+        batch_size = tf.shape(enc_output)[0]
+        x = tf.zeros([batch_size, self.n_query_embeds, self.embed_dim])
+        object_enc = self.object_queries_layer(x)
 
-        x = super().call([x, inputs], **kwargs)
+        decode_sequence = []
+        for layer in self.layers:
+            x = layer([x, enc_output, pos_enc, object_enc])
+            decode_sequence.append(x)
+
+        if self.norm:
+            x = self._norm_layer(x)
+            decode_sequence = [self._norm_layer(x) for x in decode_sequence]
+
+        if self.return_sequence:
+            x = tf.stack(decode_sequence, axis=0)
+            x = tf.transpose(x, [1, 0, 2, 3])
 
         return x
 
     def get_config(self):
-        config = {"n_query_embeds": self.n_query_embeds}
+        config = {"n_query_embeds": self.n_query_embeds, "embed_dim": self.embed_dim, "num_heads": self.num_heads,
+                  "ff_dim": self.ff_dim, "dropout_rate": self.dropout_rate, "num_layers": self.num_layers}
         base_config = super(TransformerDecoderDETR, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
-
-
-class PrintLayer(tf.keras.layers.Layer):
-    def __init__(self, prefix=None):
-        super(PrintLayer, self).__init__()
-        self.prefix = prefix
-
-    def call(self, inputs, **kwargs):
-        if self.prefix is not None:
-            # tf.print(self.prefix, tf.reduce_any(tf.math.is_nan(inputs)), tf.reduce_max(inputs), tf.reduce_min(inputs))
-            tf.print(self.prefix, tf.reduce_mean(inputs), tf.reduce_max(inputs), tf.reduce_min(inputs))
-        else:
-            # tf.print(tf.reduce_any(tf.math.is_nan(inputs)), tf.reduce_max(inputs), tf.reduce_min(inputs))
-            tf.print(tf.reduce_mean(inputs), tf.reduce_max(inputs), tf.reduce_min(inputs))
-        return inputs
-
-    def compute_mask(self, inputs, mask=None):
-        return mask
-
-    def compute_output_shape(self, input_shape):
-        return input_shape
-
-    def get_config(self):
-        config = {"prefix": self.prefix}
-        base_config = super(PrintLayer, self).get_config()
-        return dict(list(base_config.items()) + list(config.items()))
-
-
-class PrintConv2D(tf.keras.layers.Conv2D):
-
-    def call(self, inputs):
-        tf.print("conv2d_1", tf.reduce_any(tf.math.is_nan(inputs)), tf.reduce_max(inputs), tf.reduce_min(inputs))
-        x = super(PrintConv2D, self).call(inputs)
-        tf.print("conv2d_2", tf.reduce_any(tf.math.is_nan(x)))
-
-        return x
 
 
 def DETR(input_shape, n_classes, n_query_embeds, embed_dim, num_heads, dim_feedforward, num_encoder_layers,
@@ -141,32 +145,25 @@ def DETR(input_shape, n_classes, n_query_embeds, embed_dim, num_heads, dim_feedf
     else:
         x_enc = inputs
 
-    x_enc = PrintLayer("\nbackbone_1")(x_enc)
     backbone = ResNet50Backbone(input_shape, name="backbone/0/body")
     x_enc = backbone(x_enc)
-    x_enc = PrintLayer("backbone_2")(x_enc)
     x_enc = DownsampleMasking()(x_enc)
 
     proj = tf.keras.layers.Conv2D(embed_dim, kernel_size=1, name='input_proj')
-    # proj = PrintConv2D(embed_dim, kernel_size=1, name='input_proj')
     x_enc = proj(x_enc)
 
     if mask_value is not None:
         set_supports_masking(backbone, verbose=False)
         proj.supports_masking = True
 
-    x_enc = PositionalEmbedding2D(embed_dim, normalize=True)(x_enc)
+    pos_enc = PositionalEmbedding2D(embed_dim, normalize=True, add_to_input=False)(x_enc)
+    pos_enc = tf.keras.layers.Reshape([-1, embed_dim])(pos_enc)  # (batch_size, h*w, embed_dim)
     x_enc = ReshapeWithMask([-1, embed_dim], [-1])(x_enc)  # (batch_size, h*w, embed_dim)
-    # pos_enc = PositionalEmbedding2D(embed_dim, normalize=True, add_to_input=False)(x_enc)
-    # pos_enc = tf.keras.layers.Reshape([-1, embed_dim])(pos_enc)  # (batch_size, h*w, embed_dim)
-    # x_enc = ReshapeWithMask([-1, embed_dim], [-1])(x_enc)  # (batch_size, h*w, embed_dim)
 
-    enc_output = TransformerEncoder(embed_dim, num_heads, dim_feedforward, num_encoder_layers, dropout_rate,
-                                    norm=False)(x_enc)
-    # enc_output = TransformerEncoderDETR(embed_dim, num_heads, dim_feedforward, num_encoder_layers, dropout_rate,
-    #                                     norm=False)([x_enc, pos_enc])
+    enc_output = TransformerEncoderDETR(embed_dim, num_heads, dim_feedforward, num_encoder_layers, dropout_rate,
+                                        norm=False)([x_enc, pos_enc])
     x = TransformerDecoderDETR(n_query_embeds, embed_dim, num_heads, dim_feedforward, num_decoder_layers, dropout_rate,
-                               norm=True, return_sequence=return_decode_sequence)(enc_output)
+                               norm=True, return_sequence=return_decode_sequence)([enc_output, pos_enc])
 
     n_classes = n_classes + 1  # Add 1 for the "Nothing" class
     x_class = tf.keras.layers.Dense(n_classes, name="class_embed")(x)
@@ -197,7 +194,7 @@ def load_detr(path):
         from chambers.layers.batch_norm import FrozenBatchNorm2D
         from chambers.layers.masking import ReshapeWithMask, DownsampleMasking
         from chambers.layers.embedding import PositionalEmbedding2D
-        from chambers.layers.transformer import TransformerEncoder
+        from chambers.layers.transformer import TransformerEncoderDETR
         from chambers.models.detr import TransformerDecoderDETR
         from chambers.optimizers import LearningRateMultiplier
         from chambers.losses.hungarian import HungarianLoss
@@ -208,7 +205,7 @@ def load_detr(path):
                                               "DownsampleMasking": DownsampleMasking,
                                               "PositionalEmbedding2D": PositionalEmbedding2D,
                                               "ReshapeWithMask": ReshapeWithMask,
-                                              "TransformerEncoder": TransformerEncoder,
+                                              "TransformerEncoder": TransformerEncoderDETR,
                                               "TransformerDecoderDETR": TransformerDecoderDETR,
                                               "LearningRateMultiplier": LearningRateMultiplier,
                                               "Addons>AdamW": AdamW,
