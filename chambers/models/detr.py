@@ -1,5 +1,3 @@
-import pickle
-
 import numpy as np
 
 np.random.seed(42)
@@ -9,7 +7,6 @@ from chambers.layers.masking import DownsampleMasking, ReshapeWithMask
 from chambers.layers.transformer import BaseTransformerDecoder, TransformerEncoderLayer, \
     BaseTransformerEncoder, TransformerDecoderLayer
 from chambers.layers.embedding import PositionalEmbedding2D, LearnedEmbedding
-from chambers.models.resnet import ResNet50Backbone
 from chambers.utils.tf import set_supports_masking
 
 
@@ -136,8 +133,7 @@ class TransformerDecoderDETR(BaseTransformerDecoder):
 
 
 def DETR(input_shape, n_classes, n_object_queries, embed_dim, num_heads, dim_feedforward, num_encoder_layers,
-         num_decoder_layers, dropout_rate=0.1, return_decode_sequence=False, mask_value=None, name="detr",
-         backbone_weights=None):
+         num_decoder_layers, dropout_rate=0.1, return_decode_sequence=False, mask_value=None, name="detr"):
     inputs = tf.keras.layers.Input(shape=input_shape)
 
     if mask_value is not None:
@@ -145,7 +141,13 @@ def DETR(input_shape, n_classes, n_object_queries, embed_dim, num_heads, dim_fee
     else:
         x_enc = inputs
 
-    backbone = ResNet50Backbone(input_shape, name="backbone/0/body")
+    backbone = tf.keras.applications.ResNet50(input_shape=input_shape,
+                                              include_top=False,
+                                              weights="imagenet")
+    for layer in backbone.layers:
+        if isinstance(layer, tf.keras.layers.BatchNormalization):
+            layer.trainable = False
+
     x_enc = backbone(x_enc)
     x_enc = DownsampleMasking()(x_enc)
 
@@ -162,8 +164,8 @@ def DETR(input_shape, n_classes, n_object_queries, embed_dim, num_heads, dim_fee
 
     enc_output = TransformerEncoderDETR(embed_dim, num_heads, dim_feedforward, num_encoder_layers, dropout_rate,
                                         norm=False)([x_enc, pos_enc])
-    x = TransformerDecoderDETR(n_object_queries, embed_dim, num_heads, dim_feedforward, num_decoder_layers, dropout_rate,
-                               norm=True, return_sequence=return_decode_sequence)([enc_output, pos_enc])
+    x = TransformerDecoderDETR(n_object_queries, embed_dim, num_heads, dim_feedforward, num_decoder_layers,
+                               dropout_rate, norm=True, return_sequence=return_decode_sequence)([enc_output, pos_enc])
 
     n_classes = n_classes + 1  # Add 1 for the "Nothing" class
     x_class = tf.keras.layers.Dense(n_classes, name="class_embed")(x)
@@ -174,14 +176,6 @@ def DETR(input_shape, n_classes, n_object_queries, embed_dim, num_heads, dim_fee
         name='bbox_embed')(x)
 
     x = tf.keras.layers.Concatenate(axis=-1)([x_class, x_box])
-
-    if backbone_weights is not None:
-        with open(backbone_weights, 'rb') as f:
-            detr_weights = pickle.load(f)
-
-        for var in backbone.variables:
-            print(var.name)
-            var = var.assign(detr_weights[var.name[:-2]])
 
     model = tf.keras.models.Model(inputs, x, name=name)
 
