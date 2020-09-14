@@ -58,7 +58,7 @@ def load_coco(coco_path, split, batch_size):
         lambda img_path, boxes, labels: (read_jpeg(img_path), box_xywh_to_yxyx(boxes), tf.cast(labels, tf.float32)),
         num_parallel_calls=N_PARALLEL
     )
-    dataset = dataset.cache()
+    # dataset = dataset.cache()
     if split == "train":
         dataset = dataset.repeat()
         # dataset = dataset.shuffle(1024)
@@ -105,8 +105,7 @@ def load_coco_tf(split, batch_size):
     if split == "train":
         dataset = dataset.repeat()
         # dataset = dataset.shuffle(1024)
-        # dataset = dataset.map(augment, num_parallel_calls=N_PARALLEL)
-        dataset = dataset.map(augment_val, num_parallel_calls=N_PARALLEL)
+        dataset = dataset.map(augment, num_parallel_calls=N_PARALLEL)
     else:
         dataset = dataset.map(augment_val, num_parallel_calls=N_PARALLEL)
     dataset = dataset.map(normalize, num_parallel_calls=N_PARALLEL)
