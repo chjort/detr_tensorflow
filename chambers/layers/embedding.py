@@ -23,10 +23,12 @@ class PositionalEmbedding1D(tf.keras.layers.Layer):
         return inputs + positional_mask
 
     def get_angles(self, pos, i):
+        # TODO: Use Tensorflow not numpy!
         angle_rates = 1 / np.power(self.temperature, (2 * (i // 2)) / np.float32(self.embedding_dim))
         return pos * angle_rates
 
     def positional_encoding(self, position, d_model):
+        # TODO: Use Tensorflow not numpy!
         angle_rads = self.get_angles(np.arange(position)[:, np.newaxis],
                                      np.arange(d_model)[np.newaxis, :])
 
@@ -48,8 +50,8 @@ class PositionalEmbedding1D(tf.keras.layers.Layer):
 
 class PositionalEmbedding2D(tf.keras.layers.Layer):
     # These are the default parameters used in the original project
-    def __init__(self, embedding_dim, temperature=10000,
-                 normalize=False, scale=None, eps=1e-6, **kwargs):
+    def __init__(self, embedding_dim, temperature=10000, normalize=False,
+                 scale=None, eps=1e-6, add_to_input=True, **kwargs):
         super().__init__(**kwargs)
         self.embedding_dim = embedding_dim
         self.embedding_dim_1d = embedding_dim // 2
@@ -61,6 +63,7 @@ class PositionalEmbedding2D(tf.keras.layers.Layer):
             scale = 2 * np.pi
         self.scale = scale
         self.eps = eps
+        self.add_to_input = add_to_input
 
     def call(self, inputs, mask=None, **kwargs):
         tf.assert_rank(inputs, 4)
@@ -71,9 +74,12 @@ class PositionalEmbedding2D(tf.keras.layers.Layer):
         else:
             ones = tf.ones(tf.shape(inputs)[:-1], dtype=tf.float32)  # shape [batch_size, h, w]
 
-        positional_mask = self.compute_positional_mask(ones)
+        x = self.compute_positional_mask(ones)
 
-        return inputs + positional_mask
+        if self.add_to_input:
+            x = inputs + x
+
+        return x
 
     def compute_mask(self, inputs, mask=None):
         return mask
@@ -107,6 +113,33 @@ class PositionalEmbedding2D(tf.keras.layers.Layer):
 
     def get_config(self):
         config = {'embedding_dim': self.embedding_dim, "temperature": self.temperature,
-                  "normalize": self.normalize, "scale": self.scale, "eps": self.eps}
+                  "normalize": self.normalize, "scale": self.scale, "eps": self.eps,
+                  "add_to_input": self.add_to_input}
         base_config = super(PositionalEmbedding2D, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))
+
+
+class LearnedEmbedding(tf.keras.layers.Layer):
+    def __init__(self, num_embeddings, embed_dim, add_to_input=True, **kwargs):
+        super(LearnedEmbedding, self).__init__(**kwargs)
+        self.num_embeddings = num_embeddings
+        self.embed_dim = embed_dim
+        self.add_to_input = add_to_input
+        self.embeddings = self.add_weight("embeddings",
+                                          shape=[1, num_embeddings, embed_dim],
+                                          initializer="normal")
+
+    def call(self, inputs, **kwargs):
+        batch_size = tf.shape(inputs)[0]
+        x = tf.tile(self.embeddings, [batch_size, 1, 1])
+
+        if self.add_to_input:
+            x = inputs + x
+
+        return x
+
+    def get_config(self):
+        config = {"num_embeddings": self.num_embeddings, "embed_dim": self.embed_dim,
+                  "add_to_input": self.add_to_input}
+        base_config = super(LearnedEmbedding, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))

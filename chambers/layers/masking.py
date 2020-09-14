@@ -7,7 +7,7 @@ class DownsampleMasking(tf.keras.layers.Layer):
         # NOTE: 'call' method MUST modify input, in order for new mask to be computed.
 
         if mask is not None:
-            boolean_mask = tf.expand_dims(self.compute_mask(inputs, inputs._keras_mask), -1)
+            boolean_mask = tf.expand_dims(self.compute_mask(inputs, mask), -1)
             inputs = inputs * tf.cast(boolean_mask, inputs.dtype)
 
         return inputs
