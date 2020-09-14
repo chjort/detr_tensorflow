@@ -25,12 +25,12 @@ def loss_placeholder(y_true, y_pred):
     return tf.keras.losses.categorical_crossentropy(y_true, y_pred, from_logits=True)
 
 
-# model_path = "outputs/keras-m.h5"
+# model_path = "outputs/2020-09-14_20:58:52/model-epoch2.h5"
 model_path = None
 
 # %% strategy
-strategy = tf.distribute.MirroredStrategy()
-# strategy = tf.distribute.OneDeviceStrategy("/gpu:0")
+# strategy = tf.distribute.MirroredStrategy()
+strategy = tf.distribute.OneDeviceStrategy("/gpu:0")
 
 # %%
 BATCH_SIZE_PER_REPLICA = 3
@@ -52,7 +52,7 @@ with strategy.scope():
         decode_sequence = False
         detr = DETR(input_shape=(None, None, 3),
                     n_classes=91,
-                    n_query_embeds=100,
+                    n_object_queries=100,
                     embed_dim=256,
                     num_heads=8,
                     dim_feedforward=2048,
@@ -87,8 +87,6 @@ with strategy.scope():
         detr.compile(optimizer=opt,
                      loss=hungarian,
                      )
-
-detr.save("outputs/keras_model.h5")
 
 # %% TRAIN
 EPOCHS = 5  # 150

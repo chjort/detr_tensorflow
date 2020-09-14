@@ -90,7 +90,7 @@ class TransformerEncoderDETR(BaseTransformerEncoder):
 
 class TransformerDecoderDETR(BaseTransformerDecoder):
 
-    def __init__(self, n_query_embeds, embed_dim, num_heads, ff_dim, num_layers, dropout_rate=0.1, norm=False,
+    def __init__(self, n_object_queries, embed_dim, num_heads, ff_dim, num_layers, dropout_rate=0.1, norm=False,
                  return_sequence=False, **kwargs):
         self.embed_dim = embed_dim
         self.num_heads = num_heads
@@ -98,8 +98,8 @@ class TransformerDecoderDETR(BaseTransformerDecoder):
         self.num_layers = num_layers
         self.dropout_rate = dropout_rate
 
-        self.n_query_embeds = n_query_embeds
-        self.object_queries_layer = LearnedEmbedding(n_query_embeds, embed_dim, add_to_input=False)
+        self.n_object_queries = n_object_queries
+        self.object_queries_layer = LearnedEmbedding(n_object_queries, embed_dim, add_to_input=False)
 
         layers = [TransformerDecoderLayerDETR(embed_dim, num_heads, ff_dim, dropout_rate)
                   for i in range(num_layers)]
@@ -110,12 +110,12 @@ class TransformerDecoderDETR(BaseTransformerDecoder):
         enc_output, pos_enc = inputs
 
         batch_size = tf.shape(enc_output)[0]
-        x = tf.zeros([batch_size, self.n_query_embeds, self.embed_dim])
-        object_enc = self.object_queries_layer(x)
+        x = tf.zeros([batch_size, self.n_object_queries, self.embed_dim])
+        object_queries = self.object_queries_layer(x)
 
         decode_sequence = []
         for layer in self.layers:
-            x = layer([x, enc_output, pos_enc, object_enc])
+            x = layer([x, enc_output, pos_enc, object_queries])
             decode_sequence.append(x)
 
         if self.norm:
@@ -129,13 +129,13 @@ class TransformerDecoderDETR(BaseTransformerDecoder):
         return x
 
     def get_config(self):
-        config = {"n_query_embeds": self.n_query_embeds, "embed_dim": self.embed_dim, "num_heads": self.num_heads,
+        config = {"n_object_queries": self.n_object_queries, "embed_dim": self.embed_dim, "num_heads": self.num_heads,
                   "ff_dim": self.ff_dim, "dropout_rate": self.dropout_rate, "num_layers": self.num_layers}
         base_config = super(TransformerDecoderDETR, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
 
 
-def DETR(input_shape, n_classes, n_query_embeds, embed_dim, num_heads, dim_feedforward, num_encoder_layers,
+def DETR(input_shape, n_classes, n_object_queries, embed_dim, num_heads, dim_feedforward, num_encoder_layers,
          num_decoder_layers, dropout_rate=0.1, return_decode_sequence=False, mask_value=None, name="detr",
          backbone_weights=None):
     inputs = tf.keras.layers.Input(shape=input_shape)
@@ -162,7 +162,7 @@ def DETR(input_shape, n_classes, n_query_embeds, embed_dim, num_heads, dim_feedf
 
     enc_output = TransformerEncoderDETR(embed_dim, num_heads, dim_feedforward, num_encoder_layers, dropout_rate,
                                         norm=False)([x_enc, pos_enc])
-    x = TransformerDecoderDETR(n_query_embeds, embed_dim, num_heads, dim_feedforward, num_decoder_layers, dropout_rate,
+    x = TransformerDecoderDETR(n_object_queries, embed_dim, num_heads, dim_feedforward, num_decoder_layers, dropout_rate,
                                norm=True, return_sequence=return_decode_sequence)([enc_output, pos_enc])
 
     n_classes = n_classes + 1  # Add 1 for the "Nothing" class
@@ -191,21 +191,16 @@ def DETR(input_shape, n_classes, n_query_embeds, embed_dim, num_heads, dim_feedf
 def load_detr(path):
     if path.endswith(".h5") or path.endswith(".hdf5"):
         from tensorflow_addons.optimizers import AdamW
-        from chambers.layers.batch_norm import FrozenBatchNorm2D
         from chambers.layers.masking import ReshapeWithMask, DownsampleMasking
         from chambers.layers.embedding import PositionalEmbedding2D
-        from chambers.layers.transformer import TransformerEncoderDETR
-        from chambers.models.detr import TransformerDecoderDETR
         from chambers.optimizers import LearningRateMultiplier
         from chambers.losses.hungarian import HungarianLoss
-        tf.keras.models.Model.save()
         detr = tf.keras.models.load_model(path,
                                           custom_objects={
-                                              "FrozenBatchNorm2D": FrozenBatchNorm2D,
                                               "DownsampleMasking": DownsampleMasking,
                                               "PositionalEmbedding2D": PositionalEmbedding2D,
                                               "ReshapeWithMask": ReshapeWithMask,
-                                              "TransformerEncoder": TransformerEncoderDETR,
+                                              "TransformerEncoderDETR": TransformerEncoderDETR,
                                               "TransformerDecoderDETR": TransformerDecoderDETR,
                                               "LearningRateMultiplier": LearningRateMultiplier,
                                               "Addons>AdamW": AdamW,
@@ -223,7 +218,7 @@ def load_detr(path):
 # %%
 # num_classes = 91
 # embed_dim = 256
-# n_query_embeds_ = 100
+# n_object_queries_ = 100
 # batch_size = 2
 # input_shape = (896, 1216, 3)
 # # input_shape = (None, None, 3)
@@ -231,7 +226,7 @@ def load_detr(path):
 #
 # model = DETR(input_shape=input_shape,
 #              n_classes=num_classes,
-#              n_query_embeds=n_query_embeds_,
+#              n_object_queries=n_object_queries_,
 #              embed_dim=embed_dim,
 #              num_heads=8,
 #              dim_feedforward=2048,
