@@ -1,6 +1,6 @@
 import tensorflow as tf
 
-from chambers.utils.boxes import box_cxcywh_to_xyxy, boxes_giou
+from chambers.utils.boxes import boxes_giou, box_yxyx_to_xyxy
 from chambers.utils.tf import pairwise_l1 as _pairwise_l1
 from chambers.utils.utils import deserialize_object
 
@@ -16,10 +16,8 @@ def pairwise_giou(y_true, y_pred):
     y_pred = y_pred[..., :4]  # [batch_size, n_pred_boxes, 4]
 
     # giou cost
-    y_true = box_cxcywh_to_xyxy(y_true)  # TODO: Remove these box conversions. Assume the format at input.
-    y_pred = box_cxcywh_to_xyxy(y_pred)
-    # y_true = box_yxyx_to_xyxy(y_true)
-    # y_pred = box_yxyx_to_xyxy(y_pred)
+    y_true = box_yxyx_to_xyxy(y_true)
+    y_pred = box_yxyx_to_xyxy(y_pred)
     cost_giou = tf.vectorized_map(lambda inp: -boxes_giou(*inp), (y_true, y_pred))
     return cost_giou
 

@@ -1,11 +1,10 @@
 import numpy as np
 import tensorflow as tf
 
-from chambers.utils.boxes import box_cxcywh_to_yxyx
 from chambers.utils.tf import batch_linear_sum_assignment, repeat_indices
-from .pairwise import get
 from .iou import GIoULoss
 from .losses import L1Loss
+from .pairwise import get
 
 
 class HungarianLoss(tf.keras.losses.Loss):
@@ -138,9 +137,7 @@ class HungarianLoss(tf.keras.losses.Loss):
         # TODO: Make these loss functions take ``y_true_lsa`` and ``y_pred_lsa`` as input
         loss_ce = self.weighted_cross_entropy_loss(y_true_labels_lsa, y_pred_logits) * self.class_loss_weight
         loss_l1 = self.l1_loss(y_true_boxes_lsa, y_pred_boxes_lsa) * self.bbox_loss_weight
-        loss_giou = self.giou_loss(box_cxcywh_to_yxyx(y_true_boxes_lsa),
-                                   box_cxcywh_to_yxyx(y_pred_boxes_lsa)) * self.giou_loss_weight
-        # loss_giou = self.giou_loss(y_true_boxes_lsa, y_pred_boxes_lsa) * self.giou_loss_weight
+        loss_giou = self.giou_loss(y_true_boxes_lsa, y_pred_boxes_lsa) * self.giou_loss_weight
 
         # TODO: and then mask padded boxes/labels here
         return loss_ce, loss_l1, loss_giou

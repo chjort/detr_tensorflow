@@ -17,7 +17,7 @@ strategy = tf.distribute.MirroredStrategy()
 # strategy = tf.distribute.OneDeviceStrategy("/gpu:0")
 
 # %%
-BATCH_SIZE_PER_REPLICA = 4
+BATCH_SIZE_PER_REPLICA = 3
 GLOBAL_BATCH_SIZE = BATCH_SIZE_PER_REPLICA * strategy.num_replicas_in_sync
 
 # train_dataset, N_train = load_coco_tf("train", GLOBAL_BATCH_SIZE)
@@ -112,8 +112,6 @@ history = detr.fit(train_dataset,
                    )
 
 """ TODO:
-* Make TransformerEncoderDETR and TransformerDecoderDETR propagate inputs without overriding `call`. 
-* Have the box targets be yxyx format, not cxcywh format.
 * How to log all parts of hungarian loss
 * Log difference between model loss/metrics to FB loss/metrics
 * Test model on 4 GPUs

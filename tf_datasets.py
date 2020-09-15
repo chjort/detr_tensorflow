@@ -1,13 +1,14 @@
 import tensorflow as tf
 import tensorflow_datasets as tfds
 
-from chambers.augmentations import random_resize_min, box_normalize_cxcywh, box_denormalize_yxyx, flip_left_right, \
+from chambers.augmentations import random_resize_min, box_denormalize_yxyx, flip_left_right, \
     random_size_crop, resize, box_normalize_yxyx
-from chambers.utils.boxes import box_yxyx_to_cxcywh, box_xywh_to_yxyx
+from chambers.utils.boxes import box_xywh_to_yxyx
 from datasets import CocoDetection
 from utils import normalize_image, read_jpeg
 
 N_PARALLEL = -1
+
 
 def augment(img, boxes, labels):
     img, boxes = tf.cond(tf.random.uniform([1], 0, 1) > 0.5,
@@ -43,9 +44,7 @@ def augment_val(img, boxes, labels):
 
 def normalize(img, boxes, labels):
     img = normalize_image(img)
-    boxes = box_yxyx_to_cxcywh(boxes)
-    boxes = box_normalize_cxcywh(boxes, img)
-    # boxes = box_normalize_yxyx(boxes, img)
+    boxes = box_normalize_yxyx(boxes, img)
     return img, boxes, labels
 
 
@@ -62,7 +61,7 @@ def load_coco(coco_path, split, batch_size):
     if split == "train":
         dataset = dataset.repeat()
         # dataset = dataset.shuffle(1024)
-        dataset = dataset.map(augment, num_parallel_calls=N_PARALLEL)
+        dataset = dataset.map(augment_val, num_parallel_calls=N_PARALLEL)
     else:
         dataset = dataset.map(augment_val, num_parallel_calls=N_PARALLEL)
     dataset = dataset.filter(
