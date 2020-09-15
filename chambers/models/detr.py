@@ -8,6 +8,7 @@ from chambers.layers.transformer import BaseTransformerDecoder, TransformerEncod
     BaseTransformerEncoder, TransformerDecoderLayer
 from chambers.layers.embedding import PositionalEmbedding2D, LearnedEmbedding
 from chambers.utils.tf import set_supports_masking
+import tensorflow
 
 
 class TransformerEncoderLayerDETR(TransformerEncoderLayer):
@@ -141,9 +142,10 @@ def DETR(input_shape, n_classes, n_object_queries, embed_dim, num_heads, dim_fee
     else:
         x_enc = inputs
 
-    backbone = tf.keras.applications.ResNet50(input_shape=input_shape,
-                                              include_top=False,
-                                              weights="imagenet")
+    with tensorflow.python.keras.backend.get_graph().as_default(), tf.name_scope("resnet50"):
+        backbone = tf.keras.applications.ResNet50(input_shape=input_shape,
+                                                  include_top=False,
+                                                  weights="imagenet")
     for layer in backbone.layers:
         if isinstance(layer, tf.keras.layers.BatchNormalization):
             layer.trainable = False
@@ -159,8 +161,8 @@ def DETR(input_shape, n_classes, n_object_queries, embed_dim, num_heads, dim_fee
         proj.supports_masking = True
 
     pos_enc = PositionalEmbedding2D(embed_dim, normalize=True, add_to_input=False)(x_enc)
-    pos_enc = tf.keras.layers.Reshape([-1, embed_dim])(pos_enc)  # (batch_size, h*w, embed_dim)
-    x_enc = ReshapeWithMask([-1, embed_dim], [-1])(x_enc)  # (batch_size, h*w, embed_dim)
+    pos_enc = tf.keras.layers.Reshape([-1, embed_dim], name="positional_encoding_sequence")(pos_enc)  # (batch_size, h*w, embed_dim)
+    x_enc = ReshapeWithMask([-1, embed_dim], [-1], name="image_features_sequence")(x_enc)  # (batch_size, h*w, embed_dim)
 
     enc_output = TransformerEncoderDETR(embed_dim, num_heads, dim_feedforward, num_encoder_layers, dropout_rate,
                                         norm=False)([x_enc, pos_enc])
