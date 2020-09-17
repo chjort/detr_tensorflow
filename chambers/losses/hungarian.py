@@ -88,7 +88,8 @@ class HungarianLoss(tf.keras.losses.Loss):
 
     """
 
-    def __init__(self, loss_weights=None, lsa_loss_weights=None, mask_value=None, sequence_input=False, name="hungarian_loss",
+    def __init__(self, loss_weights=None, lsa_loss_weights=None, mask_value=None, sequence_input=False,
+                 name="hungarian_loss",
                  **kwargs):
         self.weighted_cross_entropy_loss = WeightedSparseCategoricalCrossEntropyCocoDETR(
             reduction=tf.keras.losses.Reduction.NONE)
@@ -155,11 +156,6 @@ class HungarianLoss(tf.keras.losses.Loss):
         :param y_pred: [batch_size, n_pred_boxes, 4 + n_classes]
         :return:
         """
-
-        batch_size = tf.shape(y_true)[0]
-        n_pred_boxes = tf.shape(y_pred)[1]
-        n_class = tf.shape(y_pred)[2] - 4
-
         prediction_indices, target_indices = self.hungarian_matcher(y_true, y_pred)
         if tf.shape(prediction_indices)[0] == 0 or tf.shape(target_indices)[0] == 0:
             return np.nan, np.nan, np.nan  # softmax, l1, giou returned as nan
@@ -170,15 +166,14 @@ class HungarianLoss(tf.keras.losses.Loss):
         y_true_boxes_lsa = y_true_lsa[..., :-1]
         y_true_labels_lsa = y_true_lsa[..., -1]
         y_pred_boxes_lsa = y_pred_lsa[..., :4]
-
         y_pred_logits = y_pred[..., 4:]  # [1]
 
+        batch_size = tf.shape(y_true)[0]
+        n_pred_boxes = tf.shape(y_pred)[1]
+        n_class = tf.shape(y_pred)[2] - 4
         no_class_labels = tf.cast(tf.fill([batch_size, n_pred_boxes], n_class - 1), tf.float32)
         y_true_labels_lsa = tf.tensor_scatter_nd_update(no_class_labels, prediction_indices,
                                                         y_true_labels_lsa)  # [batch_size, n_pred_boxes]
-
-        # tf.print(tf.shape(y_true_labels_lsa), tf.shape(y_pred_logits), "-",
-        #          tf.shape(y_true_boxes_lsa), tf.shape(y_pred_boxes_lsa))
 
         loss_ce = self.weighted_cross_entropy_loss(y_true_labels_lsa, y_pred_logits) * self.cross_ent_weight
         loss_l1 = self.l1_loss(y_true_boxes_lsa, y_pred_boxes_lsa) * self.l1_weight
@@ -187,7 +182,7 @@ class HungarianLoss(tf.keras.losses.Loss):
         return loss_ce, loss_l1, loss_giou
 
     def get_config(self):
-        config = {"lsa_loss_weights": self.lsa_loss_weights,
+        config = {"loss_weights": self.loss_weights, "lsa_loss_weights": self.lsa_loss_weights,
                   "mask_value": self.mask_value, "sequence_input": self.sequence_input}
         base_config = super(HungarianLoss, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
