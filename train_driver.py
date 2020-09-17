@@ -1,7 +1,7 @@
 import tensorflow as tf
 import tensorflow_addons as tfa
 
-from chambers.losses import HungarianLoss, pairwise_softmax, pairwise_l1, pairwise_giou
+from chambers.losses import HungarianLoss
 from chambers.models.detr import DETR, load_detr
 from chambers.optimizers import LearningRateMultiplier
 from tf_datasets import load_coco
@@ -59,10 +59,10 @@ def build_and_compile_detr():
     var_lr_mult = {var.name: 0.1 for var in detr.get_layer("resnet50").variables}
     opt = LearningRateMultiplier(opt, lr_multipliers=var_lr_mult)
 
-    hungarian = HungarianLoss(lsa_losses=[pairwise_softmax, pairwise_l1, pairwise_giou],
+    hungarian = HungarianLoss(loss_weights=[1, 5, 2],
                               lsa_loss_weights=[1, 5, 2],
                               mask_value=-1.,
-                              sequence_input=decode_sequence)
+                              sequence_input=False)
     detr.compile(optimizer=opt,
                  loss=hungarian,
                  )

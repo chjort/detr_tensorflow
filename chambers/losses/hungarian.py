@@ -7,6 +7,77 @@ from .losses import L1Loss
 from .pairwise import pairwise_giou as _pairwise_giou, pairwise_l1 as _pairwise_l1
 
 
+class HungarianMatcher:
+    def __init__(self, lsa_loss_weights, mask_value=None):
+        self.mask_value = mask_value
+        self.lsa_losses = [pairwise_sparse_softmax, pairwise_l1, pairwise_giou]
+        self.lsa_loss_weights = lsa_loss_weights
+        if self.lsa_loss_weights is None:
+            self.lsa_loss_weights = [1] * len(self.lsa_losses)
+
+    def __call__(self, y_true, y_pred):
+        """
+        :param y_true: shape [batch_size, n_true_boxes, 5].
+        :param y_pred: shape [batch_size, n_pred_boxes, 4 + n_classes].
+            If ``self.sequence_input`` is True shape must be [batch_size, sequence_len, n_true_boxes, 5]
+        :return: shape ([n_true_boxes, 2], [n_true_boxes, 2])
+        """
+
+        batch_mask = self._get_batch_mask(y_true)  # [batch_size, max_n_true_boxes_batch]
+        cost_matrix = self._compute_cost_matrix(y_true, y_pred, batch_mask)  # TODO: input format
+
+        # Ignore cost matrices that are all NaN.
+        is_nan_matrices = tf.reduce_all(tf.math.is_nan(cost_matrix), axis=(1, 2))
+        if tf.reduce_all(is_nan_matrices):
+            return tf.constant([], dtype=tf.int32), tf.constant([], dtype=tf.int32)
+
+        if tf.reduce_any(is_nan_matrices):
+            no_nan_matrices = tf.logical_not(is_nan_matrices)
+            cost_matrix = tf.ragged.boolean_mask(cost_matrix, no_nan_matrices)
+            batch_mask = tf.cast(
+                tf.transpose(tf.transpose(tf.cast(batch_mask, tf.float32)) * tf.cast(no_nan_matrices, tf.float32)),
+                tf.bool)
+
+        lsa = batch_linear_sum_assignment(cost_matrix)  # [n_true_boxes, 2]
+
+        prediction_indices, target_indices = self._lsa_to_batch_indices(lsa, batch_mask)
+        return prediction_indices, target_indices
+
+    def _compute_cost_matrix(self, y_true, y_pred, batch_mask):
+        cost_matrix = tf.math.add_n([loss_fn(y_true, y_pred) * loss_weight
+                                     for loss_fn, loss_weight in zip(self.lsa_losses, self.lsa_loss_weights)])
+
+        cost_matrix_mask = self._compute_cost_matrix_mask(cost_matrix, batch_mask)
+        cost_matrix_ragged = tf.ragged.boolean_mask(cost_matrix, cost_matrix_mask)
+
+        return cost_matrix_ragged
+
+    @staticmethod
+    def _compute_cost_matrix_mask(cost_matrix, batch_mask):
+        n_pred_boxes = tf.shape(cost_matrix)[1]
+        cost_matrix_mask = tf.tile(tf.expand_dims(batch_mask, 1), [1, n_pred_boxes, 1])
+        return cost_matrix_mask
+
+    @staticmethod
+    def _lsa_to_batch_indices(lsa_indices, batch_mask):
+        sizes = tf.reduce_sum(tf.cast(batch_mask, tf.int32), axis=1)
+        row_idx = repeat_indices(sizes)
+        row_idx = tf.tile(tf.expand_dims(row_idx, -1), [1, 2])
+        indcs = tf.stack([row_idx, lsa_indices], axis=0)
+
+        prediction_idx = tf.transpose(indcs[:, :, 0])
+        target_idx = tf.transpose(indcs[:, :, 1])
+        return prediction_idx, target_idx
+
+    def _get_batch_mask(self, y_true):
+        """
+        :param y_true:
+        :return: [batch_size, y_true.shape[0]]
+        :rtype:
+        """
+        return tf.reduce_all(tf.not_equal(y_true, self.mask_value), -1)
+
+
 class HungarianLoss(tf.keras.losses.Loss):
     """
     Computes the Linear Sum Assignment (LSA) between predictions and targets, using a weighted sum of L1,
@@ -17,22 +88,23 @@ class HungarianLoss(tf.keras.losses.Loss):
 
     """
 
-    def __init__(self, lsa_loss_weights=None, mask_value=None, sequence_input=False, name="hungarian_loss",
+    def __init__(self, loss_weights=None, lsa_loss_weights=None, mask_value=None, sequence_input=False, name="hungarian_loss",
                  **kwargs):
-        self.mask_value = mask_value
-        self.sequence_input = sequence_input
-        self.lsa_losses = [pairwise_softmax, pairwise_l1, pairwise_giou]
-        self.lsa_loss_weights = lsa_loss_weights
-
         self.weighted_cross_entropy_loss = WeightedSparseCategoricalCrossEntropyCocoDETR(
             reduction=tf.keras.losses.Reduction.NONE)
         self.l1_loss = L1Loss(reduction=tf.keras.losses.Reduction.NONE)
         self.giou_loss = GIoULoss(reduction=tf.keras.losses.Reduction.NONE)
-        self.class_loss_weight = 1
-        self.bbox_loss_weight = 5
-        self.giou_loss_weight = 2
 
-        self.loss_names = ["loss_ce", "loss_l1", "loss_giou"]
+        self.loss_weights = loss_weights
+        if self.loss_weights is None:
+            self.cross_ent_weight, self.l1_weight, self.giou_weight = 1, 1, 1
+        else:
+            self.cross_ent_weight, self.l1_weight, self.giou_weight = 1, 5, 2
+
+        self.mask_value = mask_value
+        self.sequence_input = sequence_input
+        self.hungarian_matcher = HungarianMatcher(lsa_loss_weights, mask_value)
+
         # self.batch_losses = tf.Variable(tf.zeros((1, 3)), shape=tf.TensorShape([None, len(self.loss_names)]),
         #                                 dtype=tf.float32,
         #                                 trainable=False,
@@ -51,12 +123,9 @@ class HungarianLoss(tf.keras.losses.Loss):
     def call(self, y_true, y_pred):
         """
         :param y_true: shape [batch_size, n_true_boxes, 5].
-        :type y_true:
         :param y_pred: shape [batch_size, n_pred_boxes, 4 + n_classes].
             If ``self.sequence_input`` is True shape must be [batch_size, sequence_len, n_true_boxes, 5]
-        :type y_pred:
         :return:
-        :rtype:
         """
         if self.sequence_input:
             # TODO: Parallelize loss computation over sequence
@@ -82,128 +151,48 @@ class HungarianLoss(tf.keras.losses.Loss):
 
     def _compute_losses(self, y_true, y_pred):
         """
-
         :param y_true: [batch_size, n_true_boxes, 5]
-        :type y_true:
         :param y_pred: [batch_size, n_pred_boxes, 4 + n_classes]
-        :type y_pred:
         :return:
-        :rtype:
         """
 
         batch_size = tf.shape(y_true)[0]
         n_pred_boxes = tf.shape(y_pred)[1]
         n_class = tf.shape(y_pred)[2] - 4
-        batch_mask = self._get_batch_mask(y_true)  # [batch_size, max_n_true_boxes_batch]
 
-        # cost_matrix (RaggedTensor) [batch_size, n_pred_boxes, None]
-        cost_matrix = self._compute_cost_matrix(y_true, y_pred, batch_mask)  # TODO: input format
-
-        # Ignore cost matrices that are all NaN.
-        nan_matrices = tf.reduce_all(tf.math.is_nan(cost_matrix), axis=(1, 2))
-        if tf.reduce_all(nan_matrices):
-            return np.nan, np.nan, np.nan
-
-        if tf.reduce_any(nan_matrices):
-            no_nan_matrices = tf.logical_not(nan_matrices)
-            cost_matrix = tf.ragged.boolean_mask(cost_matrix, no_nan_matrices)
-            batch_mask = tf.cast(
-                tf.transpose(tf.transpose(tf.cast(batch_mask, tf.float32)) * tf.cast(no_nan_matrices, tf.float32)),
-                tf.bool)
-
-        lsa = batch_linear_sum_assignment(cost_matrix)  # [n_true_boxes, 2]
-
-        prediction_indices, target_indices = self._lsa_to_batch_indices(lsa, batch_mask)
-        # ([n_true_boxes, 2], [n_true_boxes, 2])
+        prediction_indices, target_indices = self.hungarian_matcher(y_true, y_pred)
+        if tf.shape(prediction_indices)[0] == 0 or tf.shape(target_indices)[0] == 0:
+            return np.nan, np.nan, np.nan  # softmax, l1, giou returned as nan
 
         y_true_lsa = tf.gather_nd(y_true, target_indices)
         y_pred_lsa = tf.gather_nd(y_pred, prediction_indices)
-        tf.print(tf.shape(y_true_lsa), tf.shape(y_pred_lsa))
 
         y_true_boxes_lsa = y_true_lsa[..., :-1]
         y_true_labels_lsa = y_true_lsa[..., -1]
         y_pred_boxes_lsa = y_pred_lsa[..., :4]
 
-        # get assigned targets
         y_pred_logits = y_pred[..., 4:]  # [1]
-        # tf.print(tf.shape(y_true), tf.shape(y_pred))
 
         no_class_labels = tf.cast(tf.fill([batch_size, n_pred_boxes], n_class - 1), tf.float32)
         y_true_labels_lsa = tf.tensor_scatter_nd_update(no_class_labels, prediction_indices,
                                                         y_true_labels_lsa)  # [batch_size, n_pred_boxes]
 
-        # tf.print(tf.shape(y_true_labels_lsa),
-        #          tf.shape(y_pred_logits),
-        #          "-",
-        #          tf.shape(y_true_boxes_lsa),
-        #          tf.shape(y_pred_boxes_lsa))
+        # tf.print(tf.shape(y_true_labels_lsa), tf.shape(y_pred_logits), "-",
+        #          tf.shape(y_true_boxes_lsa), tf.shape(y_pred_boxes_lsa))
 
         # TODO: Make these loss functions take ``y_true_lsa`` and ``y_pred_lsa`` as input
-        loss_ce = self.weighted_cross_entropy_loss(y_true_labels_lsa, y_pred_logits) * self.class_loss_weight
-        loss_l1 = self.l1_loss(y_true_boxes_lsa, y_pred_boxes_lsa) * self.bbox_loss_weight
-        loss_giou = self.giou_loss(y_true_boxes_lsa, y_pred_boxes_lsa) * self.giou_loss_weight
+        loss_ce = self.weighted_cross_entropy_loss(y_true_labels_lsa, y_pred_logits) * self.cross_ent_weight
+        loss_l1 = self.l1_loss(y_true_boxes_lsa, y_pred_boxes_lsa) * self.l1_weight
+        loss_giou = self.giou_loss(y_true_boxes_lsa, y_pred_boxes_lsa) * self.giou_weight
 
         # TODO: and then mask padded boxes/labels here
         return loss_ce, loss_l1, loss_giou
 
-    def _compute_cost_matrix(self, y_true, y_pred, batch_mask):
-        cost_matrix = tf.math.add_n([loss_fn(y_true, y_pred) * loss_weight
-                                     for loss_fn, loss_weight in zip(self.lsa_losses, self.lsa_loss_weights)])
-
-        cost_matrix_mask = self._compute_cost_matrix_mask(cost_matrix, batch_mask)
-        cost_matrix_ragged = tf.ragged.boolean_mask(cost_matrix, cost_matrix_mask)
-
-        return cost_matrix_ragged
-
-    @staticmethod
-    def _compute_cost_matrix_mask(cost_matrix, batch_mask):
-        n_pred_boxes = tf.shape(cost_matrix)[1]
-        cost_matrix_mask = tf.tile(tf.expand_dims(batch_mask, 1), [1, n_pred_boxes, 1])
-        return cost_matrix_mask
-
-    def _get_batch_mask(self, y_true):
-        """
-        :param y_true:
-        :return: [batch_size, y_true.shape[0]]
-        :rtype:
-        """
-        return tf.reduce_all(tf.not_equal(y_true, self.mask_value), -1)
-
-    @staticmethod
-    def _lsa_to_batch_indices(lsa_indices, batch_mask):
-        sizes = tf.reduce_sum(tf.cast(batch_mask, tf.int32), axis=1)
-        row_idx = repeat_indices(sizes)
-        row_idx = tf.tile(tf.expand_dims(row_idx, -1), [1, 2])
-        indcs = tf.stack([row_idx, lsa_indices], axis=0)
-
-        prediction_idx = tf.transpose(indcs[:, :, 0])
-        target_idx = tf.transpose(indcs[:, :, 1])
-        return prediction_idx, target_idx
-
     def get_config(self):
-        config = {"lsa_losses": self.lsa_losses, "lsa_loss_weights": self.lsa_loss_weights,
+        config = {"lsa_loss_weights": self.lsa_loss_weights,
                   "mask_value": self.mask_value, "sequence_input": self.sequence_input}
         base_config = super(HungarianLoss, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
-
-
-def weighted_cross_entropy_loss_coco_detr(y_true, y_pred):
-    n_class = tf.shape(y_pred)[2]
-    y_true = tf.one_hot(tf.cast(y_true, tf.int32), depth=n_class)
-
-    real_class_weight = 1
-    non_class_weight = 0.1
-    class_weights = tf.concat([tf.repeat(tf.constant(real_class_weight, dtype=tf.float32), n_class - 1),
-                               tf.constant([non_class_weight], dtype=tf.float32)],
-                              axis=0)
-
-    weights = class_weights * y_true
-    weights = tf.reduce_sum(weights, axis=-1)
-
-    loss_ce = tf.keras.losses.categorical_crossentropy(y_true, y_pred, from_logits=True)
-    loss_ce = loss_ce * weights
-    loss_ce = tf.reduce_sum(loss_ce) / tf.reduce_sum(weights)
-    return loss_ce
 
 
 class WeightedSparseCategoricalCrossEntropyCocoDETR(tf.keras.losses.Loss):
@@ -222,7 +211,6 @@ class WeightedSparseCategoricalCrossEntropyCocoDETR(tf.keras.losses.Loss):
         weights = self.class_weights * y_true
         weights = tf.reduce_sum(weights, axis=-1)
 
-        tf.print(tf.shape(y_true), tf.shape(y_pred))
         loss_ce = tf.keras.losses.categorical_crossentropy(y_true, y_pred, from_logits=True)
         loss_ce = loss_ce * weights
         loss_ce = tf.reduce_sum(loss_ce) / tf.reduce_sum(weights)
@@ -258,7 +246,7 @@ def pairwise_l1(y_true, y_pred):
     return cost_bbox
 
 
-def pairwise_softmax(y_true, y_pred):
+def pairwise_sparse_softmax(y_true, y_pred):
     """
     :param y_true: (batch_size, n_true_boxes, 5)
     :param y_pred: (batch_size, n_pred_boxes, 4 + n_classes)
@@ -267,12 +255,15 @@ def pairwise_softmax(y_true, y_pred):
 
     y_true = y_true[..., -1]
     y_pred = y_pred[..., 4:]
-    y_pred = tf.nn.softmax(y_pred, axis=-1)
 
     # tf.gather does not take indices that are out of bounds when using CPU. So converting out of bounds indices to 0.
-    n_class = tf.cast(tf.shape(y_pred)[-1], y_true.dtype)
-    out_of_bound = tf.logical_or(tf.less(y_true, 0), tf.greater(y_true, n_class))
-    y_true = tf.where(out_of_bound, tf.zeros_like(y_true), y_true)
+    y_true = tf.maximum(y_true, 0)
     y_true = tf.cast(y_true, tf.int32)
 
-    return tf.vectorized_map(lambda inp: -tf.gather(*inp, axis=-1), (y_pred, y_true))
+    def gather(inputs):
+        y_pred, y_true = inputs
+        return tf.gather(y_pred, y_true, axis=-1)
+
+    y_pred = tf.nn.softmax(y_pred, axis=-1)
+    cost_softmax = -tf.vectorized_map(gather, (y_pred, y_true))
+    return cost_softmax
