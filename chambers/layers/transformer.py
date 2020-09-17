@@ -3,71 +3,6 @@ import tensorflow as tf
 from .attention import MultiHeadSelfAttention
 
 
-class BaseTransformerEncoder(tf.keras.layers.Layer):
-    def __init__(self, layers, norm=False, **kwargs):
-        super(BaseTransformerEncoder, self).__init__(**kwargs)
-        self.norm = norm
-        if norm:
-            self._norm_layer = tf.keras.layers.LayerNormalization(epsilon=1e-5)
-        else:
-            self._norm_layer = None
-        self.layers = layers
-        self.supports_masking = True
-
-    def call(self, inputs, **kwargs):
-        x = inputs
-        for layer in self.layers:
-            x = layer(x)
-
-        if self.norm:
-            x = self._norm_layer(x)
-
-        return x
-
-    def get_config(self):
-        config = {"norm": self.norm}
-        base_config = super(BaseTransformerEncoder, self).get_config()
-        return dict(list(base_config.items()) + list(config.items()))
-
-
-class BaseTransformerDecoder(tf.keras.layers.Layer):
-    def __init__(self, layers, norm=False, return_sequence=False, **kwargs):
-        super(BaseTransformerDecoder, self).__init__(**kwargs)
-        self.norm = norm
-        if norm:
-            self._norm_layer = tf.keras.layers.LayerNormalization(epsilon=1e-5)
-        else:
-            self._norm_layer = None
-        self.return_sequence = return_sequence
-        self.layers = layers
-
-    def call(self, inputs, **kwargs):
-        x, enc_output = inputs
-
-        decode_sequence = []
-        for layer in self.layers:
-            x = layer([x, enc_output])
-            decode_sequence.append(x)
-
-        if self.norm:
-            x = self._norm_layer(x)
-            decode_sequence = [self._norm_layer(x) for x in decode_sequence]
-
-        if self.return_sequence:
-            x = tf.stack(decode_sequence, axis=0)
-            x = tf.transpose(x, [1, 0, 2, 3])
-
-        return x
-
-    def compute_mask(self, inputs, mask=None):
-        return None
-
-    def get_config(self):
-        config = {"norm": self.norm, "return_sequence": self.return_sequence}
-        base_config = super(BaseTransformerDecoder, self).get_config()
-        return dict(list(base_config.items()) + list(config.items()))
-
-
 class TransformerEncoderLayer(tf.keras.layers.Layer):
     def __init__(self, embed_dim, num_heads, ff_dim, dropout_rate=0.1, **kwargs):
         super(TransformerEncoderLayer, self).__init__(**kwargs)
@@ -139,7 +74,7 @@ class TransformerDecoderLayer(tf.keras.layers.Layer):
         norm_output1 = self.layernorm1(x + attn_output1)
 
         attn_output2 = self.attn2([norm_output1, enc_output, enc_output])
-        attn_output2 = self.dropout2(attn_output2)
+        attn_output2 = self.dropout2(attn_output2, training=training)
         norm_output2 = self.layernorm2(norm_output1 + attn_output2)
 
         ffn_output = self.linear1(norm_output1)
@@ -154,6 +89,71 @@ class TransformerDecoderLayer(tf.keras.layers.Layer):
         config = {"embed_dim": self.embed_dim, "num_heads": self.num_heads,
                   "ff_dim": self.ff_dim, "dropout_rate": self.dropout_rate}
         base_config = super(TransformerDecoderLayer, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))
+
+
+class BaseTransformerEncoder(tf.keras.layers.Layer):
+    def __init__(self, layers, norm=False, **kwargs):
+        super(BaseTransformerEncoder, self).__init__(**kwargs)
+        self.norm = norm
+        if norm:
+            self._norm_layer = tf.keras.layers.LayerNormalization(epsilon=1e-5)
+        else:
+            self._norm_layer = None
+        self.layers = layers
+        self.supports_masking = True
+
+    def call(self, inputs, **kwargs):
+        x = inputs
+        for layer in self.layers:
+            x = layer(x)
+
+        if self.norm:
+            x = self._norm_layer(x)
+
+        return x
+
+    def get_config(self):
+        config = {"norm": self.norm}
+        base_config = super(BaseTransformerEncoder, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))
+
+
+class BaseTransformerDecoder(tf.keras.layers.Layer):
+    def __init__(self, layers, norm=False, return_sequence=False, **kwargs):
+        super(BaseTransformerDecoder, self).__init__(**kwargs)
+        self.norm = norm
+        if norm:
+            self._norm_layer = tf.keras.layers.LayerNormalization(epsilon=1e-5)
+        else:
+            self._norm_layer = None
+        self.return_sequence = return_sequence
+        self.layers = layers
+
+    def call(self, inputs, **kwargs):
+        x, enc_output = inputs
+
+        decode_sequence = []
+        for layer in self.layers:
+            x = layer([x, enc_output])
+            decode_sequence.append(x)
+
+        if self.norm:
+            x = self._norm_layer(x)
+            decode_sequence = [self._norm_layer(x) for x in decode_sequence]
+
+        if self.return_sequence:
+            x = tf.stack(decode_sequence, axis=0)
+            x = tf.transpose(x, [1, 0, 2, 3])
+
+        return x
+
+    def compute_mask(self, inputs, mask=None):
+        return None
+
+    def get_config(self):
+        config = {"norm": self.norm, "return_sequence": self.return_sequence}
+        base_config = super(BaseTransformerDecoder, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
 
 
