@@ -5,7 +5,7 @@ import numpy as np
 import tensorflow as tf
 
 from chambers.losses import HungarianLoss
-from chambers.losses import pairwise_softmax, pairwise_l1, pairwise_giou
+from chambers.utils.boxes import box_cxcywh_to_yxyx
 
 
 def load_samples(as_sequence=False):
@@ -50,43 +50,72 @@ def load_samples(as_sequence=False):
     labels2 = labels[1]
     labels = tf.cast(tf.stack([labels1, labels2], axis=0), tf.float32)
 
+    boxes = box_cxcywh_to_yxyx(boxes)
+    box_out = box_cxcywh_to_yxyx(box_out)
+
     y_true = tf.concat([boxes, tf.expand_dims(labels, -1)], axis=-1)
     y_pred = tf.concat([box_out, class_out], axis=-1)
     return y_true, y_pred
 
 
-hungarian = HungarianLoss(lsa_losses=[pairwise_softmax, pairwise_l1, pairwise_giou],
-                          lsa_loss_weights=[1, 5, 2],
+hungarian = HungarianLoss(lsa_loss_weights=[1, 5, 2],
                           mask_value=-1.,
                           sequence_input=False)
 y_true, y_pred = load_samples()
 loss = hungarian(y_true, y_pred)
 
-times = []
-for i in range(200):
-    st = time.time()
-    hungarian(y_true, y_pred)
-    end_time = time.time() - st
-    times.append(end_time)
-print(np.mean(times))  # 0.002422827482223511 (CH CPU)
+# times = []
+# for i in range(200):
+#     st = time.time()
+#     hungarian(y_true, y_pred)
+#     end_time = time.time() - st
+#     times.append(end_time)
+# print(np.mean(times))  # 0.002422827482223511 (CH CPU)
 
 # with sequence
-hungarian = HungarianLoss(lsa_losses=[pairwise_softmax, pairwise_l1, pairwise_giou],
-                          lsa_loss_weights=[1, 5, 2],
+hungarian = HungarianLoss(lsa_loss_weights=[1, 5, 2],
                           mask_value=-1.,
                           sequence_input=True)
 y_true, y_pred = load_samples(as_sequence=True)
 seq_loss = hungarian(y_true, y_pred)
 
-times = []
-for i in range(200):
-    st = time.time()
-    hungarian(y_true, y_pred)
-    end_time = time.time() - st
-    times.append(end_time)
-print(np.mean(times))  # 0.012478135824203491 (CH CPU)
+# times = []
+# for i in range(200):
+#     st = time.time()
+#     hungarian(y_true, y_pred)
+#     end_time = time.time() - st
+#     times.append(end_time)
+# print(np.mean(times))  # 0.012478135824203491 (CH CPU)
 
 print(loss)
 print(seq_loss)
-tf.assert_equal(loss, 1.4204133)
-tf.assert_equal(seq_loss, 8.831282)
+# tf.assert_equal(loss, 1.4204133)
+tf.assert_equal(loss, 1.409625)
+# tf.assert_equal(seq_loss, 8.831283)
+tf.assert_equal(seq_loss, 8.68166)
+
+""" YXYX
+no sequence
+0.499324858 0.160567492 0.749732733
+
+sequence
+0.524171472 0.231220722 0.824334681
+0.543324888 0.178310558 0.770565
+0.466288716 0.16810821 0.760944486
+0.491716951 0.166256934 0.759887755
+0.486429334 0.158029228 0.742445886
+0.499324858 0.160567492 0.749732733
+"""
+
+""" CXCYWH
+no sequence
+0.499324858 0.171355724 0.749732733
+
+sequence
+0.517344832 0.269919425 0.830612898
+0.548208714 0.194526181 0.767995834
+0.466288716 0.18378076 0.760944486
+0.547239721 0.166093722 0.760088205
+0.486429334 0.168950379 0.742445886
+0.499324858 0.171355724 0.749732733
+"""

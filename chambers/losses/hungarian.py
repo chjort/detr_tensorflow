@@ -4,7 +4,7 @@ import tensorflow as tf
 from chambers.utils.tf import batch_linear_sum_assignment, repeat_indices
 from .iou import GIoULoss
 from .losses import L1Loss
-from .pairwise import get
+from .pairwise import pairwise_giou as _pairwise_giou, pairwise_l1 as _pairwise_l1
 
 
 class HungarianLoss(tf.keras.losses.Loss):
@@ -17,11 +17,11 @@ class HungarianLoss(tf.keras.losses.Loss):
 
     """
 
-    def __init__(self, lsa_losses, lsa_loss_weights=None, mask_value=None, sequence_input=False, name="hungarian_loss",
+    def __init__(self, lsa_loss_weights=None, mask_value=None, sequence_input=False, name="hungarian_loss",
                  **kwargs):
         self.mask_value = mask_value
         self.sequence_input = sequence_input
-        self.lsa_losses = [get(lsa_loss) for lsa_loss in lsa_losses]
+        self.lsa_losses = [pairwise_softmax, pairwise_l1, pairwise_giou]
         self.lsa_loss_weights = lsa_loss_weights
 
         self.weighted_cross_entropy_loss = WeightedSparseCategoricalCrossEntropyCocoDETR(
@@ -116,22 +116,26 @@ class HungarianLoss(tf.keras.losses.Loss):
         prediction_indices, target_indices = self._lsa_to_batch_indices(lsa, batch_mask)
         # ([n_true_boxes, 2], [n_true_boxes, 2])
 
-        # get assigned targets
-        y_true_boxes = y_true[..., :-1]  # [0]
-        y_true_labels = y_true[..., -1]  # [1]
-        y_pred_boxes = y_pred[..., :4]  # [0]
-        y_pred_logits = y_pred[..., 4:]  # [1]
+        y_true_lsa = tf.gather_nd(y_true, target_indices)
+        y_pred_lsa = tf.gather_nd(y_pred, prediction_indices)
+        tf.print(tf.shape(y_true_lsa), tf.shape(y_pred_lsa))
 
-        y_true_boxes_lsa = tf.gather_nd(y_true_boxes, target_indices)  # [n_true_boxes, 4]
-        y_true_labels_lsa = tf.gather_nd(y_true_labels, target_indices)
+        y_true_boxes_lsa = y_true_lsa[..., :-1]
+        y_true_labels_lsa = y_true_lsa[..., -1]
+        y_pred_boxes_lsa = y_pred_lsa[..., :4]
+
+        # get assigned targets
+        y_pred_logits = y_pred[..., 4:]  # [1]
+        # tf.print(tf.shape(y_true), tf.shape(y_pred))
+
         no_class_labels = tf.cast(tf.fill([batch_size, n_pred_boxes], n_class - 1), tf.float32)
         y_true_labels_lsa = tf.tensor_scatter_nd_update(no_class_labels, prediction_indices,
                                                         y_true_labels_lsa)  # [batch_size, n_pred_boxes]
 
-        # get assigned predictions
-        y_pred_boxes_lsa = tf.gather_nd(y_pred_boxes, prediction_indices)  # [n_true_boxes, 4]
-
-        # tf.print(tf.shape(y_true_labels_lsa), tf.shape(y_pred_logits), "-", tf.shape(y_true_boxes_lsa),
+        # tf.print(tf.shape(y_true_labels_lsa),
+        #          tf.shape(y_pred_logits),
+        #          "-",
+        #          tf.shape(y_true_boxes_lsa),
         #          tf.shape(y_pred_boxes_lsa))
 
         # TODO: Make these loss functions take ``y_true_lsa`` and ``y_pred_lsa`` as input
@@ -205,10 +209,9 @@ def weighted_cross_entropy_loss_coco_detr(y_true, y_pred):
 class WeightedSparseCategoricalCrossEntropyCocoDETR(tf.keras.losses.Loss):
     def __init__(self, reduction=tf.keras.losses.Reduction.AUTO, name="weighted_sparse_categorical_cross_entropy"):
         super().__init__(reduction=reduction, name=name)
-        real_class_weight = 1
         non_class_weight = 0.1
         self.n_class = 92
-        class_weights = tf.concat([tf.repeat(tf.constant(real_class_weight, dtype=tf.float32), self.n_class - 1),
+        class_weights = tf.concat([tf.ones(self.n_class - 1, dtype=tf.float32),
                                    tf.constant([non_class_weight], dtype=tf.float32)],
                                   axis=0)
         self.class_weights = class_weights
@@ -219,7 +222,57 @@ class WeightedSparseCategoricalCrossEntropyCocoDETR(tf.keras.losses.Loss):
         weights = self.class_weights * y_true
         weights = tf.reduce_sum(weights, axis=-1)
 
+        tf.print(tf.shape(y_true), tf.shape(y_pred))
         loss_ce = tf.keras.losses.categorical_crossentropy(y_true, y_pred, from_logits=True)
         loss_ce = loss_ce * weights
         loss_ce = tf.reduce_sum(loss_ce) / tf.reduce_sum(weights)
         return loss_ce
+
+
+def pairwise_giou(y_true, y_pred):
+    """
+    :param y_true: (batch_size, n_true_boxes, 5)
+    :param y_pred: (batch_size, n_pred_boxes, 4 + n_classes)
+    :return: (batch_size, n_pred_boxes, n_true_boxes)
+    """
+
+    y_true = y_true[..., :-1]  # [batch_size, n_true_boxes, 4]
+    y_pred = y_pred[..., :4]  # [batch_size, n_pred_boxes, 4]
+
+    cost_giou = _pairwise_giou(y_true, y_pred)
+    return cost_giou
+
+
+def pairwise_l1(y_true, y_pred):
+    """
+    :param y_true: (batch_size, n_true_boxes, 5)
+    :param y_pred: (batch_size, n_pred_boxes, 4 + n_classes)
+    :return: (batch_size, n_pred_boxes, n_true_boxes)
+    """
+
+    y_true = y_true[..., :-1]  # [batch_size, n_true_boxes, 4]
+    y_pred = y_pred[..., :4]  # [batch_size, n_pred_boxes, 4]
+
+    # bbox cost
+    cost_bbox = _pairwise_l1(y_pred, y_true)
+    return cost_bbox
+
+
+def pairwise_softmax(y_true, y_pred):
+    """
+    :param y_true: (batch_size, n_true_boxes, 5)
+    :param y_pred: (batch_size, n_pred_boxes, 4 + n_classes)
+    :return: (batch_size, n_pred_boxes, n_true_boxes)
+    """
+
+    y_true = y_true[..., -1]
+    y_pred = y_pred[..., 4:]
+    y_pred = tf.nn.softmax(y_pred, axis=-1)
+
+    # tf.gather does not take indices that are out of bounds when using CPU. So converting out of bounds indices to 0.
+    n_class = tf.cast(tf.shape(y_pred)[-1], y_true.dtype)
+    out_of_bound = tf.logical_or(tf.less(y_true, 0), tf.greater(y_true, n_class))
+    y_true = tf.where(out_of_bound, tf.zeros_like(y_true), y_true)
+    y_true = tf.cast(y_true, tf.int32)
+
+    return tf.vectorized_map(lambda inp: -tf.gather(*inp, axis=-1), (y_pred, y_true))
