@@ -18,8 +18,7 @@ class HungarianLoss(tf.keras.losses.Loss):
     """
 
     def __init__(self, loss_weights=None, lsa_loss_weights=None, mask_value=None, sequence_input=False,
-                 name="hungarian_loss",
-                 **kwargs):
+                 sum_losses=True, name="hungarian_loss", **kwargs):
         self.weighted_cross_entropy_loss = WeightedSparseCategoricalCrossEntropyCocoDETR(
             reduction=tf.keras.losses.Reduction.NONE)
         self.l1_loss = L1Loss(reduction=tf.keras.losses.Reduction.NONE)
@@ -38,11 +37,7 @@ class HungarianLoss(tf.keras.losses.Loss):
 
         self.mask_value = mask_value
         self.sequence_input = sequence_input
-
-        # self.batch_losses = tf.Variable(tf.zeros((1, 3)), shape=tf.TensorShape([None, len(self.loss_names)]),
-        #                                 dtype=tf.float32,
-        #                                 trainable=False,
-        #                                 )
+        self.sum_losses = sum_losses
 
         if sequence_input:
             self.input_signature = [tf.TensorSpec(shape=(None, None, 5), dtype=tf.float32),
@@ -64,24 +59,22 @@ class HungarianLoss(tf.keras.losses.Loss):
         if self.sequence_input:
             # TODO: Parallelize loss computation over sequence
             tf.assert_rank(y_pred, 4, "Invalid input shape.")
-
-            batch_losses = tf.TensorArray(tf.float32, size=0, dynamic_size=True, infer_shape=True)
             seq_len = tf.shape(y_pred)[1]
+
+            decode_layers_losses = tf.TensorArray(tf.float32, size=seq_len, element_shape=tf.TensorShape([3]))
             for i in tf.range(seq_len):
                 y_pred_i = y_pred[:, i, :, :]
                 losses_i = self._compute_losses(y_true, y_pred_i)
-                batch_losses = batch_losses.write(i, losses_i)
+                decode_layers_losses = decode_layers_losses.write(i, losses_i)
 
-            batch_losses_values = batch_losses.stack()
-            # self.batch_losses.assign(batch_losses_values)
-            loss = tf.reduce_sum(batch_losses_values)
+            losses = decode_layers_losses.stack()
         else:
-            losses = self._compute_losses(y_true, y_pred)
-            # self.batch_losses.assign([losses])
+            losses = [self._compute_losses(y_true, y_pred)]
 
-            loss = tf.reduce_sum(losses)
+        if self.sum_losses:
+            losses = tf.reduce_sum(losses)
 
-        return loss
+        return losses
 
     def _compute_losses(self, y_true, y_pred):
         """
@@ -169,7 +162,7 @@ class HungarianLoss(tf.keras.losses.Loss):
 
     def get_config(self):
         config = {"loss_weights": self.loss_weights, "lsa_loss_weights": self.lsa_loss_weights,
-                  "mask_value": self.mask_value, "sequence_input": self.sequence_input}
+                  "mask_value": self.mask_value, "sequence_input": self.sequence_input, "sum_losses": self.sum_losses}
         base_config = super(HungarianLoss, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
 

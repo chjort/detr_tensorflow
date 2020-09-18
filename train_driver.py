@@ -27,7 +27,7 @@ train_dataset = train_dataset.prefetch(-1)
 
 # %%
 def build_and_compile_detr():
-    decode_sequence = False
+    decode_sequence = True
     detr = DETR(input_shape=(None, None, 3),
                 n_classes=91,
                 n_object_queries=100,
@@ -62,7 +62,7 @@ def build_and_compile_detr():
     hungarian = HungarianLoss(loss_weights=[1, 5, 2],
                               lsa_loss_weights=[1, 5, 2],
                               mask_value=-1.,
-                              sequence_input=False)
+                              sequence_input=decode_sequence)
     detr.compile(optimizer=opt,
                  loss=hungarian,
                  )
@@ -87,11 +87,12 @@ print("Number of devices in strategy:", strategy.num_replicas_in_sync)
 print("Global batch size: {}. Per device batch size: {}".format(GLOBAL_BATCH_SIZE, BATCH_SIZE_PER_REPLICA))
 
 # ssh -L 6006:127.0.0.1:6006 crr@40.68.160.55
-tensorboard = tf.keras.callbacks.TensorBoard(log_dir="tb_logs", write_graph=True, update_freq="epoch", profile_batch=0)
+# tensorboard = tf.keras.callbacks.TensorBoard(log_dir="tb_logs", write_graph=True, update_freq="epoch", profile_batch=0)
 
 # model_dir = os.path.join("outputs", timestamp_now())
 # os.makedirs(model_dir, exist_ok=True)
 # model_file = os.path.join(model_dir, "model-epoch{epoch}.h5")
+detr.save("outputs/keras_model.h5")
 history = detr.fit(train_dataset,
                    validation_data=val_dataset,
                    epochs=EPOCHS,
@@ -103,7 +104,7 @@ history = detr.fit(train_dataset,
                        #                                    save_best_only=False,
                        #                                    save_weights_only=False
                        #                                    ),
-                       tensorboard
+                       # tensorboard
                    ]
                    )
 

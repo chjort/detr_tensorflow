@@ -91,10 +91,10 @@ seq_loss = hungarian(y_true, y_pred)
 
 print(loss)
 print(seq_loss)
-# tf.assert_equal(loss, 1.4204133)
-tf.assert_equal(loss, 1.4096249)
-# tf.assert_equal(seq_loss, 8.831283)
-tf.assert_equal(seq_loss, 8.68166)
+# tf.assert_equal(loss, 1.4204133)  # CXCYWH
+tf.assert_equal(loss, 1.4096249)  # YXYX
+# tf.assert_equal(seq_loss, 8.831283)  # CXCYWH
+tf.assert_equal(seq_loss, 8.68166)  # YXYX
 
 """ YXYX
 no sequence
