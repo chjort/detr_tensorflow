@@ -92,7 +92,7 @@ seq_loss = hungarian(y_true, y_pred)
 print(loss)
 print(seq_loss)
 # tf.assert_equal(loss, 1.4204133)
-tf.assert_equal(loss, 1.409625)
+tf.assert_equal(loss, 1.4096249)
 # tf.assert_equal(seq_loss, 8.831283)
 tf.assert_equal(seq_loss, 8.68166)
 
