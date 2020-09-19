@@ -50,7 +50,7 @@ def plot_results(img, boxes, labels=None, probs=None, colors=None, linewidth=3, 
     plt.imshow(img)
     ax = plt.gca()
 
-    for i in range(len(labels)):
+    for i in range(len(boxes)):
         y0, x0, y1, x1 = boxes[i]
         color = colors[i % len(colors)]
         ax.add_patch(plt.Rectangle((x0, y0), x1 - x0, y1 - y0, fill=False, color=color, linewidth=linewidth))
