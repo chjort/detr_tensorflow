@@ -20,31 +20,40 @@ class HungarianLossLogger(tf.keras.callbacks.Callback):
         self.dataset = dataset
         self.loss_names = ["loss_ce", "loss_l1", "loss_giou"]
         self.hungarian = None
-        self.y_true = [y for x, y in self.dataset]
-        self.batch_size = self.y_true[0].shape[0]
+        self.y_true = None
+        self.batch_size = None
 
-    def on_epoch_end(self, epoch, logs=None):
+    def on_train_begin(self, logs=None):
+        if not isinstance(self.model.loss, _HungarianLoss):
+            raise ValueError("Model is not compiled with HungarianLoss. This callback can " \
+                             "only be used when the model is compiled with HungarianLoss.")
+
         if self.hungarian is None:
-            if not isinstance(self.model.loss, _HungarianLoss):
-                raise ValueError("Model is not compiled with HungarianLoss. This callback can " \
-                                 "only be used when the model is compiled with HungarianLoss.")
             self.hungarian = _HungarianLoss(loss_weights=self.model.loss.loss_weights,
                                             lsa_loss_weights=self.model.loss.lsa_loss_weights,
                                             mask_value=self.model.loss.mask_value,
                                             sequence_input=self.model.loss.sequence_input,
                                             sum_losses=False
                                             )
+        self.y_true = [y for x, y in self.dataset]
+        self.batch_size = self.y_true[0].shape[0]
 
+    def on_epoch_end(self, epoch, logs=None):
         y_pred = self.model.predict(self.dataset)
         y_pred = tf.split(y_pred, y_pred.shape[0] // self.batch_size)
         losses = [self.hungarian(yt, yp) for yt, yp in zip(self.y_true, y_pred)]
-
-        # losses = [self.hungarian(y, self.model(x, training=False)) for x, y in self.dataset]
         losses = tf.reduce_mean(losses, axis=0).numpy()
 
-        logs["val_loss"] = losses.sum()  # NOTE: Values seem to differ from validation data in fit loop.
+        logs["val_loss"] = losses.sum()
 
-        for i in range(losses.shape[0]):
+        # the loss of the last decoder layer. (The actual predictions)
+        losses_last = losses[-1]
+        for loss, name in zip(losses_last, self.loss_names):
+            log_name = "val_{}".format(name)
+            logs[log_name] = loss
+
+        # the losses of the preceding decoder layers (auxiliary losses).
+        for i in range(losses.shape[0] - 1):
             losses_i = losses[i]
             for loss, name in zip(losses_i, self.loss_names):
                 log_name = "val_{}_{}".format(name, i)
