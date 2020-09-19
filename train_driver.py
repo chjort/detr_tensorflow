@@ -1,9 +1,13 @@
+import os
+
 import tensorflow as tf
 import tensorflow_addons as tfa
 
+from chambers.callbacks import DETR_FB_Loss_Diff, HungarianLossLogger
 from chambers.losses import HungarianLoss
 from chambers.models.detr import DETR, load_detr
 from chambers.optimizers import LearningRateMultiplier
+from chambers.utils.utils import timestamp_now
 from tf_datasets import load_coco
 
 # model_path = "outputs/2020-09-14_20:58:52/model-epoch2.h5"
@@ -17,6 +21,7 @@ strategy = tf.distribute.MirroredStrategy()
 BATCH_SIZE_PER_REPLICA = 3
 GLOBAL_BATCH_SIZE = BATCH_SIZE_PER_REPLICA * strategy.num_replicas_in_sync
 
+print("\n### LOADING DATA ###")
 # train_dataset, N_train = load_coco_tf("train", GLOBAL_BATCH_SIZE)
 # val_dataset, N_val = load_coco_tf("val", GLOBAL_BATCH_SIZE)
 train_dataset, N_train = load_coco("/datadrive/crr/datasets/coco", "train", GLOBAL_BATCH_SIZE)
@@ -24,10 +29,12 @@ val_dataset, N_val = load_coco("/datadrive/crr/datasets/coco", "val", GLOBAL_BAT
 
 train_dataset = train_dataset.prefetch(-1)
 
-
 # %%
+print("\n### BUILDING MODEL ###")
+
+
 def build_and_compile_detr():
-    decode_sequence = True
+    return_decode_sequence = False
     detr = DETR(input_shape=(None, None, 3),
                 n_classes=91,
                 n_object_queries=100,
@@ -37,7 +44,7 @@ def build_and_compile_detr():
                 num_encoder_layers=6,
                 num_decoder_layers=6,
                 dropout_rate=0.1,
-                return_decode_sequence=decode_sequence,
+                return_decode_sequence=return_decode_sequence,
                 mask_value=-1.
                 )
 
@@ -62,7 +69,7 @@ def build_and_compile_detr():
     hungarian = HungarianLoss(loss_weights=[1, 5, 2],
                               lsa_loss_weights=[1, 5, 2],
                               mask_value=-1.,
-                              sequence_input=decode_sequence)
+                              sequence_input=return_decode_sequence)
     detr.compile(optimizer=opt,
                  loss=hungarian,
                  )
@@ -74,42 +81,66 @@ with strategy.scope():
         print("Loading model:", model_path)
         detr = load_detr(model_path)
     else:
+        print("Initializing model.")
         detr = build_and_compile_detr()
 
 # %% TRAIN
+print("\n### TRAINING ###")
 EPOCHS = 10  # 150
 N_train = 200
 N_val = 100
-STEPS_PER_EPOCH = N_train / GLOBAL_BATCH_SIZE
-VAL_STEPS = N_val / GLOBAL_BATCH_SIZE
+STEPS_PER_EPOCH = N_train // GLOBAL_BATCH_SIZE
+VAL_STEPS_PER_EPOCH = N_val // GLOBAL_BATCH_SIZE
 
-print("Number of devices in strategy:", strategy.num_replicas_in_sync)
-print("Global batch size: {}. Per device batch size: {}".format(GLOBAL_BATCH_SIZE, BATCH_SIZE_PER_REPLICA))
+print("Number of GPUs for training:", strategy.num_replicas_in_sync)
+print("Global batch size: {}. Per GPU batch size: {}".format(GLOBAL_BATCH_SIZE, BATCH_SIZE_PER_REPLICA))
 
-# ssh -L 6006:127.0.0.1:6006 crr@40.68.160.55
-# tensorboard = tf.keras.callbacks.TensorBoard(log_dir="tb_logs", write_graph=True, update_freq="epoch", profile_batch=0)
+print("Training steps per epoch:", STEPS_PER_EPOCH)
+print("Validation steps per epoch:", VAL_STEPS_PER_EPOCH)
 
-# model_dir = os.path.join("outputs", timestamp_now())
-# os.makedirs(model_dir, exist_ok=True)
-# model_file = os.path.join(model_dir, "model-epoch{epoch}.h5")
-detr.save("outputs/keras_model.h5")
+# make output folders and paths
+model_dir = os.path.join("outputs", timestamp_now())
+checkpoint_dir = os.path.join(model_dir, "checkpoints")
+log_dir = os.path.join(model_dir, "logs")
+os.makedirs(checkpoint_dir, exist_ok=True)
+os.makedirs(log_dir, exist_ok=True)
+checkpoint_path = os.path.join(checkpoint_dir, "model-epoch{epoch}.h5")
+csv_path = os.path.join(log_dir, "logs.csv")
+tensorboard_path = os.path.join(log_dir, "tb")
+
+# detr.save(os.path.join(checkpoint_dir, "model-init.h5"))  # save initial weights
 history = detr.fit(train_dataset,
                    validation_data=val_dataset,
                    epochs=EPOCHS,
                    steps_per_epoch=STEPS_PER_EPOCH,
-                   validation_steps=VAL_STEPS,
+                   validation_steps=VAL_STEPS_PER_EPOCH,
                    callbacks=[
-                       # tf.keras.callbacks.ModelCheckpoint(filepath=model_file,
-                       #                                    monitor="val_loss",
-                       #                                    save_best_only=False,
-                       #                                    save_weights_only=False
-                       #                                    ),
-                       # tensorboard
+                       DETR_FB_Loss_Diff("fb_log.txt"),
+                       # HungarianLossLogger(val_dataset.take(VAL_STEPS_PER_EPOCH)),
+                       tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
+                                                          monitor="val_loss",
+                                                          save_best_only=False,
+                                                          save_weights_only=False
+                                                          ),
+                       # ssh -L 6006:127.0.0.1:6006 crr@40.68.160.55
+                       tf.keras.callbacks.CSVLogger(csv_path),
+                       tf.keras.callbacks.TensorBoard(log_dir=tensorboard_path, write_graph=True,
+                                                      update_freq="epoch", profile_batch=0)
                    ]
                    )
 
 """ TODO:
-* Log difference between model loss/metrics to FB loss/metrics
-* Test model on 4 GPUs
+* Test model on 8 GPUs
+* Set device batch size to 4 on Tesla V100 32GB
 * Set EPOCHS = 150
 """
+
+# eval = detr.evaluate(val_dataset.take(33), return_dict=True)
+# preds = detr.predict(val_dataset, steps=VAL_STEPS_PER_EPOCH)
+# preds[1].shape
+
+# preds = []
+# for x, y in val_dataset.take(VAL_STEPS_PER_EPOCH):
+#     print(x.shape)
+    # z = detr.predict(x)
+    # preds.append(z)

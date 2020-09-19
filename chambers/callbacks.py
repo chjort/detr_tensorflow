@@ -1,6 +1,8 @@
-from chambers.losses.hungarian import HungarianLoss
-import tensorflow as tf
 import json
+
+import tensorflow as tf
+
+from chambers.losses.hungarian import HungarianLoss as _HungarianLoss
 
 
 class LearningRateLogger(tf.keras.callbacks.Callback):
@@ -17,32 +19,39 @@ class HungarianLossLogger(tf.keras.callbacks.Callback):
         super(HungarianLossLogger, self).__init__()
         self.dataset = dataset
         self.loss_names = ["loss_ce", "loss_l1", "loss_giou"]
-        self.hungarian = HungarianLoss(loss_weights=self.model.loss.loss_weights,
-                                       lsa_loss_weights=self.model.loss.lsa_loss_weights,
-                                       mask_value=self.model.loss.mask_value,
-                                       sequence_input=self.model.loss.sequence_input,
-                                       sum_losses=False
-                                       )
+        self.hungarian = None
 
     def on_epoch_end(self, epoch, logs=None):
-        pass
+        if self.hungarian is None:
+            if not isinstance(self.model.loss, _HungarianLoss):
+                raise ValueError("Model is not compiled with HungarianLoss. This callback can " \
+                                 "only be used when the model is compiled with HungarianLoss.")
+            self.hungarian = _HungarianLoss(loss_weights=self.model.loss.loss_weights,
+                                            lsa_loss_weights=self.model.loss.lsa_loss_weights,
+                                            mask_value=self.model.loss.mask_value,
+                                            sequence_input=self.model.loss.sequence_input,
+                                            sum_losses=False
+                                            )
 
+        preds = self.model.predict(self.dataset)
+        losses = [self.hungarian(y, self.model(x, training=False)) for x, y in self.dataset]
+        losses = tf.reduce_mean(losses, axis=0).numpy()
 
-    # def on_batch_end(self, epoch, logs=None):
-    #     batch_losses = self.model.loss.batch_losses
-    #
-    #     for i in tf.range(tf.shape(batch_losses)[0]):
-    #         losses_i = batch_losses[i]
-    #         for loss, name in zip(losses_i, self.loss_names):
-    #             if i > 0:
-    #                 name = "{}_{}".format(name, i)
-    #             logs[name] = loss
+        logs["val_loss"] = tf.reduce_sum(losses)  # NOTE: Values seem to differ from validation data in fit loop.
+
+        for i in range(losses.shape[0]):
+            losses_i = losses[i]
+            for loss, name in zip(losses_i, self.loss_names):
+                log_name = "val_{}_{}".format(name, i)
+                logs[log_name] = loss
+
 
 class DETR_FB_Loss_Diff(tf.keras.callbacks.Callback):
-    def __init__(self):
+    def __init__(self, log_file):
         super(DETR_FB_Loss_Diff, self).__init__()
+        self.log_file = log_file
 
-        with open("fb_log.txt", "r") as f:
+        with open(self.log_file, "r") as f:
             log_dicts = f.read().split("\n")
             log_dicts = [json.loads(log_dic) for log_dic in log_dicts]
 
