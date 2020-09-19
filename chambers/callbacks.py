@@ -20,6 +20,8 @@ class HungarianLossLogger(tf.keras.callbacks.Callback):
         self.dataset = dataset
         self.loss_names = ["loss_ce", "loss_l1", "loss_giou"]
         self.hungarian = None
+        self.y_true = [y for x, y in self.dataset]
+        self.batch_size = self.y_true[0].shape[0]
 
     def on_epoch_end(self, epoch, logs=None):
         if self.hungarian is None:
@@ -34,10 +36,8 @@ class HungarianLossLogger(tf.keras.callbacks.Callback):
                                             )
 
         y_pred = self.model.predict(self.dataset)
-        y_true = [y for x, y in self.dataset]
-        batch_size = y_true[0].shape[0]
-        y_pred = tf.split(y_pred, y_pred.shape[0]//batch_size)
-        losses = [self.hungarian(yt, yp) for yt, yp in zip(y_true, y_pred)]
+        y_pred = tf.split(y_pred, y_pred.shape[0] // self.batch_size)
+        losses = [self.hungarian(yt, yp) for yt, yp in zip(self.y_true, y_pred)]
 
         # losses = [self.hungarian(y, self.model(x, training=False)) for x, y in self.dataset]
         losses = tf.reduce_mean(losses, axis=0).numpy()
