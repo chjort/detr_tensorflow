@@ -9,22 +9,22 @@ from chambers.utils.boxes import box_cxcywh_to_yxyx
 
 
 def load_samples(as_sequence=False):
-    samples = np.load("../x_pt.npy")
+    samples = np.load("x_pt.npy")
     samples = tf.convert_to_tensor(samples)
     samples = tf.transpose(samples, [0, 2, 3, 1])
 
-    mask = np.load("../mask_pt.npy")
+    mask = np.load("mask_pt.npy")
     mask = tf.convert_to_tensor(mask)
 
     x1 = tf.where(tf.expand_dims(mask[0], -1), tf.ones_like(samples[0]) * -1., samples[0])  # masked values to -1
     x2 = tf.where(tf.expand_dims(mask[1], -1), tf.ones_like(samples[1]) * -1., samples[1])  # masked values to -1
     x = tf.stack([x1, x2], axis=0)
 
-    with open("../y_pt.pickle", "rb") as f:
+    with open("y_pt.pickle", "rb") as f:
         targets = pickle.load(f)
         targets = [{k: tf.convert_to_tensor(v) for k, v in t.items() if k in ("boxes", "labels")} for t in targets]
 
-    with open("../pred_pt.pickle", "rb") as f:
+    with open("pred_pt.pickle", "rb") as f:
         pred = pickle.load(f)
         pred["pred_logits"] = tf.convert_to_tensor(pred["pred_logits"])
         pred["pred_boxes"] = tf.convert_to_tensor(pred["pred_boxes"])
