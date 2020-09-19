@@ -16,61 +16,6 @@ def box_area(boxes):
     return (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
 
 
-# TODO: put in metrics
-def boxes_iou(y_true, y_pred):
-    """
-    Computes IOU between predicted bounding boxes and ground truth bounding boxes.
-    The bounding boxes are expected to have format [x0, y0, x1, y1].
-
-    :param y_true: Ground truth bounding box with format [x0, y0, x1, y1].
-    :type y_true: tensorflow.Tensor
-    :param y_pred: Predicted bounding box with format [x0, y0, x1, y1].
-    :type y_pred: tensorflow.Tensor
-    :return: Intersection over union between y_pred and y_true
-    :rtype: tensorflow.Tensor
-    """
-    b1_area = box_area(y_pred)
-    b2_area = box_area(y_true)
-
-    left_top = tf.maximum(y_pred[:, None, :2], y_true[:, :2])
-    right_bottom = tf.minimum(y_pred[:, None, 2:], y_true[:, 2:])
-
-    wh = right_bottom - left_top
-    wh = tf.clip_by_value(wh, 0, tf.reduce_max(wh))
-
-    intersection = wh[..., 0] * wh[..., 1]
-    union = b1_area[:, None] + b2_area - intersection
-    iou = intersection / union
-
-    return iou, union
-
-
-def boxes_giou(y_true, y_pred):
-    """
-    Computes Generalized IOU between predicted bounding boxes and ground truth bounding boxes.
-    The bounding boxes are expected to have format [x0, y0, x1, y1].
-
-    :param y_true: Ground truth bounding box with format [x0, y0, x1, y1].
-    :type y_true: tensorflow.Tensor
-    :param y_pred: Predicted bounding box with format [x0, y0, x1, y1].
-    :type y_pred: tensorflow.Tensor
-    :return: Generalized intersection over union between y_pred and y_true
-    :rtype: tensorflow.Tensor
-    """
-    iou, union = boxes_iou(y_true, y_pred)
-
-    left_bottom = tf.minimum(y_pred[:, None, :2], y_true[:, :2])
-    right_top = tf.maximum(y_pred[:, None, 2:], y_true[:, 2:])
-
-    wh = right_top - left_bottom
-    wh = tf.clip_by_value(wh, 0, tf.reduce_max(wh))
-
-    area = wh[..., 0] * wh[..., 1]
-
-    giou = iou - (area - union) / area
-    return giou
-
-
 ### TO XYXY ###
 def box_yxyx_to_xyxy(x):
     """ Converts bounding box with format [y0, x0, y1, x1] to format [x0, y0, x1, y1] """
@@ -227,14 +172,3 @@ def get(identifier):
         raise ValueError("Argument 'identifier' must be type string.")
 
     return f
-
-
-def relative_to_absolute(boxes, height, width):
-    """
-    :param boxes: Bounding boxes with format [y0, x0, y1, x1] and normalized between 0 and 1.
-    :param height:
-    :param width:
-    :return:
-    """
-    scale = tf.constant([height, width, height, width], dtype=tf.float32)
-    return boxes * scale

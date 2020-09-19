@@ -125,6 +125,8 @@ history = detr.fit(train_dataset,
                    )
 
 """ TODO:
+* Log output prediction images into Tensorboard
+* Group sublosses for decode layers in Tensorboard
 * Test model on 8 GPUs
 * Set device batch size to 4 on Tesla V100 32GB
 * Set EPOCHS = 150
