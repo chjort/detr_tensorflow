@@ -108,14 +108,14 @@ checkpoint_path = os.path.join(checkpoint_dir, "model-epoch{epoch}.h5")
 csv_path = os.path.join(log_dir, "logs.csv")
 tensorboard_path = os.path.join(log_dir, "tb")
 
-# detr.save(os.path.join(checkpoint_dir, "model-init.h5"))  # save initial weights
+detr.save(os.path.join(checkpoint_dir, "model-init.h5"))  # save initial weights
 history = detr.fit(train_dataset,
                    validation_data=val_dataset,
                    epochs=EPOCHS,
                    steps_per_epoch=STEPS_PER_EPOCH,
                    validation_steps=VAL_STEPS_PER_EPOCH,
                    callbacks=[
-                       # HungarianLossLogger(val_dataset.take(VAL_STEPS_PER_EPOCH)),
+                       HungarianLossLogger(val_dataset.take(VAL_STEPS_PER_EPOCH)),
                        DETR_FB_Loss_Diff("fb_log.txt"),
                        tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
                                                           monitor="val_loss",
