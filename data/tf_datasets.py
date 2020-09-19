@@ -6,7 +6,7 @@ from chambers.augmentations import random_resize_min, box_denormalize_yxyx, flip
 from chambers.utils.boxes import box_xywh_to_yxyx
 from chambers.utils.tf import read_jpeg
 from chambers.utils.utils import normalize_image
-from coco import CocoDetection
+from data.coco import CocoDetection
 
 N_PARALLEL = -1
 
