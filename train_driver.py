@@ -115,8 +115,8 @@ history = detr.fit(train_dataset,
                    steps_per_epoch=STEPS_PER_EPOCH,
                    validation_steps=VAL_STEPS_PER_EPOCH,
                    callbacks=[
-                       DETR_FB_Loss_Diff("fb_log.txt"),
                        # HungarianLossLogger(val_dataset.take(VAL_STEPS_PER_EPOCH)),
+                       DETR_FB_Loss_Diff("fb_log.txt"),
                        tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
                                                           monitor="val_loss",
                                                           save_best_only=False,
@@ -135,8 +135,14 @@ history = detr.fit(train_dataset,
 * Set EPOCHS = 150
 """
 
+# preds = detr.predict(val_dataset.take(VAL_STEPS_PER_EPOCH))
+# y = [y for x, y in val_dataset.take(VAL_STEPS_PER_EPOCH)]
+# preds = tf.split(preds, preds.shape[0]//GLOBAL_BATCH_SIZE)
+# preds[0].shape
+#
+# detr.loss(y[0], preds[0])
+
 # eval = detr.evaluate(val_dataset.take(33), return_dict=True)
-# preds = detr.predict(val_dataset, steps=VAL_STEPS_PER_EPOCH)
 # preds[1].shape
 
 # preds = []
@@ -144,3 +150,29 @@ history = detr.fit(train_dataset,
 #     print(x.shape)
     # z = detr.predict(x)
     # preds.append(z)
+
+# dataset = val_dataset.take(VAL_STEPS_PER_EPOCH)
+# model = detr
+#
+# y_pred = model.predict(dataset)
+# y_true = [y for x, y in dataset]
+# batch_size = y_true[0].shape[0]
+# y_pred = tf.split(y_pred, y_pred.shape[0] // batch_size)
+#
+# hungarian = HungarianLoss(loss_weights=model.loss.loss_weights,
+#                            lsa_loss_weights=model.loss.lsa_loss_weights,
+#                            mask_value=model.loss.mask_value,
+#                            sequence_input=model.loss.sequence_input,
+#                            sum_losses=False
+#                            )
+# losses = [hungarian(yt, yp) for yt, yp in zip(y_true, y_pred)]
+# losses = tf.reduce_mean(losses, axis=0).numpy()
+# losses
+#
+# tf.reduce_sum(losses)
+#
+# for i in range(losses.shape[0]):
+#     losses_i = losses[i]
+#     for loss, name in zip(losses_i, ["ce", "l1", "giou"]):
+#         log_name = "val_{}_{}".format(name, i)
+#         print(log_name, loss)

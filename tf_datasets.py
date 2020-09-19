@@ -4,8 +4,9 @@ import tensorflow_datasets as tfds
 from chambers.augmentations import random_resize_min, box_denormalize_yxyx, flip_left_right, \
     random_size_crop, resize, box_normalize_yxyx
 from chambers.utils.boxes import box_xywh_to_yxyx
-from datasets import CocoDetection
-from utils import normalize_image, read_jpeg
+from chambers.utils.tf import read_jpeg
+from chambers.utils.utils import normalize_image
+from coco import CocoDetection
 
 N_PARALLEL = -1
 

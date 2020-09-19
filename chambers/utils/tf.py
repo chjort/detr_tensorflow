@@ -3,6 +3,12 @@ import tensorflow as tf
 from scipy.optimize import linear_sum_assignment as linear_sum_assignment_scipy
 
 
+def read_jpeg(img_path):
+    image = tf.io.read_file(img_path)
+    image = tf.image.decode_jpeg(image, channels=3)
+    return image
+
+
 def set_supports_masking(model, verbose=True, **kwargs):
     """
         Sets the attribute 'supports_masking' to True for every layer in model.
