@@ -229,8 +229,12 @@ def get(identifier):
     return f
 
 
-def absolute2relative(boxes, img_size):
-    width, height = img_size
-    scale = tf.constant([width, height, width, height], dtype=tf.float32)
-    boxes *= scale
-    return boxes
+def relative_to_absolute(boxes, height, width):
+    """
+    :param boxes: Bounding boxes with format [y0, x0, y1, x1] and normalized between 0 and 1.
+    :param height:
+    :param width:
+    :return:
+    """
+    scale = tf.constant([height, width, height, width], dtype=tf.float32)
+    return boxes * scale

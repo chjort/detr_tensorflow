@@ -1,6 +1,6 @@
 import tensorflow as tf
 
-from chambers.utils.tf import resize as _resize
+from chambers.utils.image import resize as _resize
 
 
 def random_size_crop_WIP(img, boxes, labels, min_size, max_size):

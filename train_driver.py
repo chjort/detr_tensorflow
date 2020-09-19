@@ -1,3 +1,5 @@
+import os
+
 import tensorflow as tf
 import tensorflow_addons as tfa
 
@@ -5,6 +7,7 @@ from chambers.callbacks import DETR_FB_Loss_Diff, HungarianLossLogger
 from chambers.losses import HungarianLoss
 from chambers.models.detr import DETR, load_detr
 from chambers.optimizers import LearningRateMultiplier
+from chambers.utils.utils import timestamp_now
 from data.tf_datasets import load_coco
 
 # model_path = "outputs/2020-09-14_20:58:52/model-epoch2.h5"
@@ -12,15 +15,12 @@ model_path = None
 
 # %% strategy
 strategy = tf.distribute.MirroredStrategy()
-# strategy = tf.distribute.OneDeviceStrategy("/gpu:0")
 
 # %%
 BATCH_SIZE_PER_REPLICA = 3
 GLOBAL_BATCH_SIZE = BATCH_SIZE_PER_REPLICA * strategy.num_replicas_in_sync
 
 print("\n### LOADING DATA ###")
-# train_dataset, N_train = load_coco_tf("train", GLOBAL_BATCH_SIZE)
-# val_dataset, N_val = load_coco_tf("val", GLOBAL_BATCH_SIZE)
 train_dataset, N_train = load_coco("/datadrive/crr/datasets/coco", "train", GLOBAL_BATCH_SIZE)
 val_dataset, N_val = load_coco("/datadrive/crr/datasets/coco", "val", GLOBAL_BATCH_SIZE)
 
@@ -96,33 +96,31 @@ print("Training steps per epoch:", STEPS_PER_EPOCH)
 print("Validation steps per epoch:", VAL_STEPS_PER_EPOCH)
 
 # make output folders and paths
-# model_dir = os.path.join("outputs", timestamp_now())
-# checkpoint_dir = os.path.join(model_dir, "checkpoints")
-# log_dir = os.path.join(model_dir, "logs")
-# os.makedirs(checkpoint_dir, exist_ok=True)
-# os.makedirs(log_dir, exist_ok=True)
-# checkpoint_path = os.path.join(checkpoint_dir, "model-epoch{epoch}.h5")
-# csv_path = os.path.join(log_dir, "logs.csv")
-# tensorboard_path = os.path.join(log_dir, "tb")
+model_dir = os.path.join("outputs", timestamp_now())
+checkpoint_dir = os.path.join(model_dir, "checkpoints")
+log_dir = os.path.join(model_dir, "logs")
+os.makedirs(checkpoint_dir, exist_ok=True)
+os.makedirs(log_dir, exist_ok=True)
+checkpoint_path = os.path.join(checkpoint_dir, "model-epoch{epoch}.h5")
+csv_path = os.path.join(log_dir, "logs.csv")
+tensorboard_path = os.path.join(log_dir, "tb")
 
-# detr.save(os.path.join(checkpoint_dir, "model-init.h5"))  # save initial weights
+detr.save(os.path.join(checkpoint_dir, "model-init.h5"))  # save initial weights
 history = detr.fit(train_dataset,
-                   # validation_data=val_dataset,
                    epochs=EPOCHS,
                    steps_per_epoch=STEPS_PER_EPOCH,
-                   # validation_steps=VAL_STEPS_PER_EPOCH,
                    callbacks=[
                        HungarianLossLogger(val_dataset.take(VAL_STEPS_PER_EPOCH)),
-                       DETR_FB_Loss_Diff("fb_log.txt"),
-                       # tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
-                       #                                    monitor="val_loss",
-                       #                                    save_best_only=False,
-                       #                                    save_weights_only=False
-                       #                                    ),
+                       DETR_FB_Loss_Diff("samples/fb_log.txt"),
+                       tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
+                                                          monitor="val_loss",
+                                                          save_best_only=False,
+                                                          save_weights_only=False
+                                                          ),
                        # ssh -L 6006:127.0.0.1:6006 crr@40.68.160.55
-                       # tf.keras.callbacks.CSVLogger(csv_path),
-                       # tf.keras.callbacks.TensorBoard(log_dir=tensorboard_path, write_graph=True,
-                       #                                update_freq="epoch", profile_batch=0)
+                       tf.keras.callbacks.CSVLogger(csv_path),
+                       tf.keras.callbacks.TensorBoard(log_dir=tensorboard_path, write_graph=True,
+                                                      update_freq="epoch", profile_batch=0)
                    ]
                    )
 
