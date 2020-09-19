@@ -5,6 +5,13 @@ import tensorflow as tf
 from chambers.losses.hungarian import HungarianLoss as _HungarianLoss
 
 
+class TensorBoard(tf.keras.callbacks.TensorBoard):
+
+
+    def _log_metrics(self, logs, prefix, step):
+        pass
+
+
 class LearningRateLogger(tf.keras.callbacks.Callback):
     def on_epoch_end(self, epoch, logs=None):
         lr = self.model.optimizer.learning_rate
@@ -60,9 +67,9 @@ class HungarianLossLogger(tf.keras.callbacks.Callback):
                 logs[log_name] = loss
 
 
-class DETR_FB_Loss_Diff(tf.keras.callbacks.Callback):
+class LossDiffDETR(tf.keras.callbacks.Callback):
     def __init__(self, log_file):
-        super(DETR_FB_Loss_Diff, self).__init__()
+        super(LossDiffDETR, self).__init__()
         self.log_file = log_file
 
         with open(self.log_file, "r") as f:
@@ -78,3 +85,11 @@ class DETR_FB_Loss_Diff(tf.keras.callbacks.Callback):
 
         logs["train_diff"] = train_diff
         logs["test_diff"] = test_diff
+
+
+class PredImagesTensorboardDETR(tf.keras.callbacks.Callback):
+    def __init__(self):
+        super(PredImagesTensorboardDETR, self).__init__()
+        self.image_files = [
+            ""
+        ]

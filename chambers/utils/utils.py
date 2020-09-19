@@ -1,3 +1,4 @@
+import io
 import datetime
 import inspect
 
@@ -21,7 +22,7 @@ def imshow(img):
 
 
 def plot_results(img, boxes, labels=None, probs=None, colors=None, linewidth=3, text_color="yellow", text_alpha=0.5,
-                 figsize=(16, 10)):
+                 fontsize=None, figsize=(16, 10), return_img=False):
     """
     Plots the bounding boxes and labels onto an image.
 
@@ -46,7 +47,10 @@ def plot_results(img, boxes, labels=None, probs=None, colors=None, linewidth=3, 
         colors = [[0.000, 0.447, 0.741], [0.850, 0.325, 0.098], [0.929, 0.694, 0.125],
                   [0.494, 0.184, 0.556], [0.466, 0.674, 0.188], [0.301, 0.745, 0.933]]
 
-    plt.figure(figsize=figsize)
+    if figsize is None:
+        figsize = (img.shape[1]/100, img.shape[0]/100)
+
+    fig = plt.figure(figsize=figsize)
     plt.imshow(img)
     ax = plt.gca()
 
@@ -55,33 +59,38 @@ def plot_results(img, boxes, labels=None, probs=None, colors=None, linewidth=3, 
         color = colors[i % len(colors)]
         ax.add_patch(plt.Rectangle((x0, y0), x1 - x0, y1 - y0, fill=False, color=color, linewidth=linewidth))
 
+        text = None
         if labels is not None:
             label = labels[i]
             text = f'{label}'
         if probs is not None:
             p = probs[i]
             text = text + f': {p:0.2f}'
-        else:
-            text = None
 
         if text is not None:
-            ax.text(x0, y0, text, fontsize=15, bbox=dict(facecolor=text_color, alpha=text_alpha))
+            if fontsize is None:
+                fontsize_ratio = 1.8e-05
+                fontsize = (img.shape[0] * img.shape[1]) * fontsize_ratio
+                fontsize = np.round(fontsize, 0).astype(int)
+            ax.text(x0, y0+fontsize, text, fontsize=fontsize, bbox=dict(facecolor=text_color, alpha=text_alpha))
 
     plt.axis('off')
     plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
-    plt.show()
+
+    if return_img:
+        buf = io.BytesIO()
+        plt.savefig(buf, format="png")
+        plt.close(fig)
+        buf.seek(0)
+        out_img = tf.image.decode_png(buf.getvalue(), channels=4)
+        return out_img
+    else:
+        plt.show()
 
 
-def plot_img_boxes_cxcywh(img, boxes):
+def plot_img_boxes_cxcywh(img, boxes, colors=None):
     boxes = box_cxcywh_to_yxyx(boxes)
-
-    colors = [[1.0, 0., 0.]]
-    box_img = tf.image.draw_bounding_boxes([img], [boxes], colors)
-    box_img = tf.cast(box_img, tf.uint8)
-    box_img = box_img[0]
-
-    plt.imshow(box_img.numpy())
-    plt.show()
+    plot_img_boxes_yxyx(img, boxes, colors)
 
 
 def plot_img_boxes_yxyx(img, boxes, colors=None):

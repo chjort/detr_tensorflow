@@ -3,7 +3,7 @@ import os
 import tensorflow as tf
 import tensorflow_addons as tfa
 
-from chambers.callbacks import DETR_FB_Loss_Diff, HungarianLossLogger
+from chambers.callbacks import LossDiffDETR, HungarianLossLogger
 from chambers.losses import HungarianLoss
 from chambers.models.detr import DETR, load_detr
 from chambers.optimizers import LearningRateMultiplier
@@ -111,7 +111,7 @@ history = detr.fit(train_dataset,
                    steps_per_epoch=STEPS_PER_EPOCH,
                    callbacks=[
                        HungarianLossLogger(val_dataset.take(VAL_STEPS_PER_EPOCH)),
-                       DETR_FB_Loss_Diff("samples/fb_log.txt"),
+                       LossDiffDETR("samples/fb_log.txt"),
                        tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
                                                           monitor="val_loss",
                                                           save_best_only=False,
