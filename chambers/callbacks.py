@@ -3,7 +3,10 @@ import json
 import tensorflow as tf
 
 from chambers.losses.hungarian import HungarianLoss as _HungarianLoss
-from chambers.utils.image import read_image
+from chambers.models.detr import post_process
+from chambers.utils.image import read_image, resnet_imagenet_normalize
+from chambers.utils.utils import plot_results
+from data.coco import CLASSES
 
 
 class TensorBoard(tf.keras.callbacks.TensorBoard):
@@ -67,9 +70,9 @@ class HungarianLossLogger(tf.keras.callbacks.Callback):
                 logs[log_name] = loss
 
 
-class LossDiffDETR(tf.keras.callbacks.Callback):
+class DETRLossDiffLogger(tf.keras.callbacks.Callback):
     def __init__(self, log_file):
-        super(LossDiffDETR, self).__init__()
+        super(DETRLossDiffLogger, self).__init__()
         self.log_file = log_file
 
         with open(self.log_file, "r") as f:
@@ -87,9 +90,9 @@ class LossDiffDETR(tf.keras.callbacks.Callback):
         logs["test_diff"] = test_diff
 
 
-class PredImagesTensorboardDETR(tf.keras.callbacks.Callback):
+class DETRPredImageTensorboard(tf.keras.callbacks.Callback):
     def __init__(self, logdir):
-        super(PredImagesTensorboardDETR, self).__init__()
+        super(DETRPredImageTensorboard, self).__init__()
         self.logdir = logdir
         self.image_files = [
             "samples/sample0.jpg",
@@ -97,16 +100,31 @@ class PredImagesTensorboardDETR(tf.keras.callbacks.Callback):
             "samples/sample2.jpg"
         ]
         self.images = []
+        self.preprocessed_images = []
         self.writer = None
 
     def on_train_begin(self, logs=None):
-        # TODO: preprocess
         self.images = [read_image(fp) for fp in self.image_files]
+        self.preprocessed_images = [tf.expand_dims(resnet_imagenet_normalize(x), 0) for x in self.images]
         self.writer = tf.summary.create_file_writer(self.logdir)
 
     def on_epoch_end(self, epoch, logs=None):
-        pred_imgs = [self.model(x, training=False) for x in self.images]
-        # TODO: post process
+        preds = [self.model(x, training=False) for x in self.preprocessed_images]
+
+        keep_probs = [0.0, 0.1, 0.5, 0.7]
+        pred_imgs = {}
+        for i, (img, pred) in enumerate(zip(self.images, preds)):
+            for keep in keep_probs:
+                pred_img = self._draw_predictons(img, pred, CLASSES, keep=keep)
+                pred_imgs.setdefault("Prediction sample {} ({})".format(i, keep_probs), []).append(pred_img)
 
         with self.writer.as_default():
-            tf.summary.image("Prediction samples", pred_imgs, step=epoch)
+            for name, imgs in pred_imgs.items():
+                tf.summary.image(name, imgs, max_outputs=len(imgs), step=epoch)
+
+    def _draw_predictons(self, img, y_pred, label_names, keep=None, figsize=None, fontsize=None):
+        boxes_pred, labels_pred, probs_pred = post_process(y_pred, keep=keep)
+        label_names_pred = [label_names[label] for label in labels_pred]
+        pred_img = plot_results(img, boxes_pred, label_names_pred, probs_pred, linewidth=1.5, figsize=figsize,
+                                fontsize=fontsize, return_img=True)
+        return pred_img

@@ -70,7 +70,7 @@ def plot_results(img, boxes, labels=None, probs=None, colors=None, linewidth=3, 
         if text is not None:
             if fontsize is None:
                 fontsize_ratio = 1.8e-05
-                fontsize = (img.shape[0] * img.shape[1]) * fontsize_ratio
+                fontsize = (figsize[0] * figsize[1]) * 100 * fontsize_ratio
                 fontsize = np.round(fontsize, 0).astype(int)
             ax.text(x0, y0+fontsize, text, fontsize=fontsize, bbox=dict(facecolor=text_color, alpha=text_alpha))
 
