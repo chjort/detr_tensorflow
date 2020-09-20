@@ -3,10 +3,10 @@ import json
 import tensorflow as tf
 
 from chambers.losses.hungarian import HungarianLoss as _HungarianLoss
+from chambers.utils.image import read_image
 
 
 class TensorBoard(tf.keras.callbacks.TensorBoard):
-
 
     def _log_metrics(self, logs, prefix, step):
         pass
@@ -88,8 +88,25 @@ class LossDiffDETR(tf.keras.callbacks.Callback):
 
 
 class PredImagesTensorboardDETR(tf.keras.callbacks.Callback):
-    def __init__(self):
+    def __init__(self, logdir):
         super(PredImagesTensorboardDETR, self).__init__()
+        self.logdir = logdir
         self.image_files = [
-            ""
+            "samples/sample0.jpg",
+            "samples/sample1.png",
+            "samples/sample2.jpg"
         ]
+        self.images = []
+        self.writer = None
+
+    def on_train_begin(self, logs=None):
+        # TODO: preprocess
+        self.images = [read_image(fp) for fp in self.image_files]
+        self.writer = tf.summary.create_file_writer(self.logdir)
+
+    def on_epoch_end(self, epoch, logs=None):
+        pred_imgs = [self.model(x, training=False) for x in self.images]
+        # TODO: post process
+
+        with self.writer.as_default():
+            tf.summary.image("Prediction samples", pred_imgs, step=epoch)
