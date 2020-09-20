@@ -3,7 +3,7 @@ import os
 import tensorflow as tf
 import tensorflow_addons as tfa
 
-from chambers.callbacks import DETRLossDiffLogger, HungarianLossLogger
+from chambers.callbacks import DETRLossDiffLogger, HungarianLossLogger, DETRPredImageTensorboard, GroupedTensorBoard
 from chambers.losses import HungarianLoss
 from chambers.models.detr import DETR, load_detr
 from chambers.optimizers import LearningRateMultiplier
@@ -60,8 +60,7 @@ def build_and_compile_detr():
                                amsgrad=False,
                                )
 
-    var_lr_mult = {var.name: 0.1 for var in detr.get_layer("resnet50").variables}
-    opt = LearningRateMultiplier(opt, lr_multipliers=var_lr_mult)
+    opt = LearningRateMultiplier(opt, lr_multipliers={"resnet50": 0.1})
 
     hungarian = HungarianLoss(loss_weights=[1, 5, 2],
                               lsa_loss_weights=[1, 5, 2],
@@ -105,27 +104,35 @@ checkpoint_path = os.path.join(checkpoint_dir, "model-epoch{epoch}.h5")
 csv_path = os.path.join(log_dir, "logs.csv")
 tensorboard_path = os.path.join(log_dir, "tb")
 
-detr.save(os.path.join(checkpoint_dir, "model-init.h5"))  # save initial weights
+callbacks = [
+    HungarianLossLogger(val_dataset, steps=VAL_STEPS_PER_EPOCH),
+    DETRLossDiffLogger("samples/fb_log.txt"),
+    tf.keras.callbacks.CSVLogger(csv_path),
+    # ssh -L 6006:127.0.0.1:6006 crr@40.68.160.55
+    GroupedTensorBoard(tensorboard_path),
+    tf.keras.callbacks.TensorBoard(log_dir=tensorboard_path, write_graph=True,
+                                   update_freq="epoch", profile_batch=0),
+    DETRPredImageTensorboard(log_dir=tensorboard_path, min_prob=(0.0, 0.1, 0.5, 0.7),
+                             image_files=["samples/sample0.jpg",
+                                          "samples/sample1.png",
+                                          "samples/sample2.jpg"
+                                          ],
+                             ),
+    tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
+                                       monitor="val_loss",
+                                       save_best_only=False,
+                                       save_weights_only=False
+                                       ),
+]
+
+detr.save(os.path.join(checkpoint_dir, "model-init.h5"))  # save initialization
 history = detr.fit(train_dataset,
                    epochs=EPOCHS,
                    steps_per_epoch=STEPS_PER_EPOCH,
-                   callbacks=[
-                       HungarianLossLogger(val_dataset.take(VAL_STEPS_PER_EPOCH)),
-                       DETRLossDiffLogger("samples/fb_log.txt"),
-                       tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
-                                                          monitor="val_loss",
-                                                          save_best_only=False,
-                                                          save_weights_only=False
-                                                          ),
-                       # ssh -L 6006:127.0.0.1:6006 crr@40.68.160.55
-                       tf.keras.callbacks.CSVLogger(csv_path),
-                       tf.keras.callbacks.TensorBoard(log_dir=tensorboard_path, write_graph=True,
-                                                      update_freq="epoch", profile_batch=0)
-                   ]
+                   callbacks=callbacks
                    )
 
 """ TODO:
-* Log output prediction images into Tensorboard
 * Group sublosses for decode layers in Tensorboard
 * Test model on 8 GPUs
 * Set device batch size to 4 on Tesla V100 32GB

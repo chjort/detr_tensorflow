@@ -26,8 +26,6 @@ class LearningRateMultiplier(tf.keras.optimizers.Optimizer):
         self._optimizer = optimizer
         self.lr_multipliers = lr_multipliers
 
-        # TODO: Set only initial learning rate for layers???
-
     def _get_multiplier(self, param):
         max_key_len = 0
         max_len_key = None

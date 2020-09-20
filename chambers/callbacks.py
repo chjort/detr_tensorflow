@@ -1,4 +1,6 @@
 import json
+import os
+from collections.abc import Iterable
 
 import tensorflow as tf
 
@@ -9,10 +11,14 @@ from chambers.utils.utils import plot_results
 from data.coco import CLASSES
 
 
-class TensorBoard(tf.keras.callbacks.TensorBoard):
+class GroupedTensorBoard(tf.keras.callbacks.Callback):
+    def __init__(self, log_dir):
+        self.log_dir = os.path.join(log_dir, "validation", "decode_layer1")
+        self.writer = tf.summary.create_file_writer(self.log_dir)
 
-    def _log_metrics(self, logs, prefix, step):
-        pass
+    def on_epoch_end(self, epoch, logs=None):
+        with self.writer.as_default():
+            tf.summary.scalar("decode_epoch_loss_ce", epoch, epoch)
 
 
 class LearningRateLogger(tf.keras.callbacks.Callback):
@@ -25,9 +31,10 @@ class LearningRateLogger(tf.keras.callbacks.Callback):
 
 
 class HungarianLossLogger(tf.keras.callbacks.Callback):
-    def __init__(self, dataset):
+    def __init__(self, dataset: tf.data.Dataset, steps=None):
         super(HungarianLossLogger, self).__init__()
         self.dataset = dataset
+        self.steps = steps
         self.loss_names = ["loss_ce", "loss_l1", "loss_giou"]
         self.hungarian = None
         self.y_true = None
@@ -45,11 +52,14 @@ class HungarianLossLogger(tf.keras.callbacks.Callback):
                                             sequence_input=self.model.loss.sequence_input,
                                             sum_losses=False
                                             )
-        self.y_true = [y for x, y in self.dataset]
+        if self.steps is None:
+            self.y_true = [y for x, y in self.dataset]
+        else:
+            self.y_true = [y for x, y in self.dataset.take(self.steps)]
         self.batch_size = self.y_true[0].shape[0]
 
     def on_epoch_end(self, epoch, logs=None):
-        y_pred = self.model.predict(self.dataset)
+        y_pred = self.model.predict(self.dataset, steps=self.steps)
         y_pred = tf.split(y_pred, y_pred.shape[0] // self.batch_size)
         losses = [self.hungarian(yt, yp) for yt, yp in zip(self.y_true, y_pred)]
         losses = tf.reduce_mean(losses, axis=0).numpy()
@@ -91,14 +101,11 @@ class DETRLossDiffLogger(tf.keras.callbacks.Callback):
 
 
 class DETRPredImageTensorboard(tf.keras.callbacks.Callback):
-    def __init__(self, logdir):
+    def __init__(self, log_dir, image_files, min_prob=(0.0, 0.1, 0.5, 0.7)):
         super(DETRPredImageTensorboard, self).__init__()
-        self.logdir = logdir
-        self.image_files = [
-            "samples/sample0.jpg",
-            "samples/sample1.png",
-            "samples/sample2.jpg"
-        ]
+        self.log_dir = os.path.join(log_dir, "validation")
+        self.image_files = image_files
+        self.min_prob = list(min_prob) if isinstance(min_prob, Iterable) else [min_prob]
         self.images = []
         self.preprocessed_images = []
         self.writer = None
@@ -106,24 +113,24 @@ class DETRPredImageTensorboard(tf.keras.callbacks.Callback):
     def on_train_begin(self, logs=None):
         self.images = [read_image(fp) for fp in self.image_files]
         self.preprocessed_images = [tf.expand_dims(resnet_imagenet_normalize(x), 0) for x in self.images]
-        self.writer = tf.summary.create_file_writer(self.logdir)
+        self.writer = tf.summary.create_file_writer(self.log_dir)
 
     def on_epoch_end(self, epoch, logs=None):
         preds = [self.model(x, training=False) for x in self.preprocessed_images]
 
-        keep_probs = [0.0, 0.1, 0.5, 0.7]
         pred_imgs = {}
         for i, (img, pred) in enumerate(zip(self.images, preds)):
-            for keep in keep_probs:
-                pred_img = self._draw_predictons(img, pred, CLASSES, keep=keep)
-                pred_imgs.setdefault("Prediction sample {} ({})".format(i, keep_probs), []).append(pred_img)
+            for keep in self.min_prob:
+                pred_img = self._draw_predictons(img, pred, CLASSES, min_prob=keep)
+                pred_imgs.setdefault("Prediction sample {} - min_probs: {}".format(i, self.min_prob), []).append(
+                    pred_img)
 
         with self.writer.as_default():
             for name, imgs in pred_imgs.items():
                 tf.summary.image(name, imgs, max_outputs=len(imgs), step=epoch)
 
-    def _draw_predictons(self, img, y_pred, label_names, keep=None, figsize=None, fontsize=None):
-        boxes_pred, labels_pred, probs_pred = post_process(y_pred, keep=keep)
+    def _draw_predictons(self, img, y_pred, label_names, min_prob=None, figsize=None, fontsize=None):
+        boxes_pred, labels_pred, probs_pred = post_process(y_pred, min_prob=min_prob)
         label_names_pred = [label_names[label] for label in labels_pred]
         pred_img = plot_results(img, boxes_pred, label_names_pred, probs_pred, linewidth=1.5, figsize=figsize,
                                 fontsize=fontsize, return_img=True)

@@ -1,6 +1,6 @@
-import io
 import datetime
 import inspect
+import io
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -11,8 +11,10 @@ from chambers.utils.boxes import box_cxcywh_to_yxyx
 
 
 def timestamp_now():
-    dt = str(datetime.datetime.now())
-    return "_".join(dt.split(" ")).split(".")[0]
+    now = str(datetime.datetime.now())
+    now = "_".join(now.split(" ")).split(".")[0]
+    now = "-".join(now.split(":"))
+    return now
 
 
 def imshow(img):
@@ -48,7 +50,7 @@ def plot_results(img, boxes, labels=None, probs=None, colors=None, linewidth=3, 
                   [0.494, 0.184, 0.556], [0.466, 0.674, 0.188], [0.301, 0.745, 0.933]]
 
     if figsize is None:
-        figsize = (img.shape[1]/100, img.shape[0]/100)
+        figsize = (img.shape[1] / 100, img.shape[0] / 100)
 
     fig = plt.figure(figsize=figsize)
     plt.imshow(img)
@@ -72,7 +74,7 @@ def plot_results(img, boxes, labels=None, probs=None, colors=None, linewidth=3, 
                 fontsize_ratio = 1.8e-05
                 fontsize = (figsize[0] * figsize[1]) * 100 * fontsize_ratio
                 fontsize = np.round(fontsize, 0).astype(int)
-            ax.text(x0, y0+fontsize, text, fontsize=fontsize, bbox=dict(facecolor=text_color, alpha=text_alpha))
+            ax.text(x0, y0 + fontsize, text, fontsize=fontsize, bbox=dict(facecolor=text_color, alpha=text_alpha))
 
     plt.axis('off')
     plt.subplots_adjust(left=0, right=1, top=1, bottom=0)

@@ -216,7 +216,7 @@ def load_detr(path, compile=True):
     return detr
 
 
-def post_process(y_pred, keep=None):
+def post_process(y_pred, min_prob=None):
     boxes = y_pred[..., :4]
     logits = y_pred[..., 4:]
 
@@ -228,9 +228,9 @@ def post_process(y_pred, keep=None):
     labels = labels.numpy()
     probs = probs.numpy()
 
-    if keep is not None:
-        keep = float(keep)
-        keep_mask = probs > keep
+    if min_prob is not None:
+        min_prob = float(min_prob)
+        keep_mask = probs > min_prob
         boxes = boxes[keep_mask]
         labels = labels[keep_mask]
         probs = probs[keep_mask]
