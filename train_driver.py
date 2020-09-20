@@ -80,6 +80,8 @@ with strategy.scope():
         print("Initializing model.")
         detr = build_and_compile_detr()
 
+detr.summary()
+
 # %% TRAIN
 print("\n### TRAINING ###")
 EPOCHS = 10  # 150

@@ -13,10 +13,17 @@ from data.coco import CLASSES
 
 class GroupedTensorBoard(tf.keras.callbacks.Callback):
     def __init__(self, log_dir):
-        self.log_dir = os.path.join(log_dir, "validation", "decode_layer1")
-        self.writer = tf.summary.create_file_writer(self.log_dir)
+        self.log_dir = os.path.join(log_dir, "validation")
+        self.writers = None
 
     def on_epoch_end(self, epoch, logs=None):
+        # TODO: get sublosses for all decode layers
+
+        if self.writers is None:
+            # TODO: create a writer for each decode layer
+            # tf.summary.create_file_writer(os.path.join(self.log_dir, "decode_layer" + str(i)))
+            pass
+
         with self.writer.as_default():
             tf.summary.scalar("decode_epoch_loss_ce", epoch, epoch)
 
@@ -121,7 +128,7 @@ class DETRPredImageTensorboard(tf.keras.callbacks.Callback):
         pred_imgs = {}
         for i, (img, pred) in enumerate(zip(self.images, preds)):
             for keep in self.min_prob:
-                pred_img = self._draw_predictons(img, pred, CLASSES, min_prob=keep)
+                pred_img = self._draw_predictons(img, pred, CLASSES, min_prob=keep, fontsize=20)
                 pred_imgs.setdefault("Prediction sample {} - min_probs: {}".format(i, self.min_prob), []).append(
                     pred_img)
 
