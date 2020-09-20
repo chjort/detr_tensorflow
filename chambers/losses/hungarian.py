@@ -47,7 +47,7 @@ class HungarianLoss(tf.keras.losses.Loss):
                                     tf.TensorSpec(shape=(None, None, None), dtype=tf.float32)]
         self.call = tf.function(self.call, input_signature=self.input_signature)
 
-        super().__init__(reduction=tf.keras.losses.Reduction.NONE, name=name, **kwargs)
+        super().__init__(reduction=tf.keras.losses.Reduction.NONE, name=name)
 
     def call(self, y_true, y_pred):
         """

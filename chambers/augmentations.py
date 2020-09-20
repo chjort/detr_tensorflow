@@ -28,14 +28,6 @@ def random_size_crop_WIP(img, boxes, labels, min_size, max_size):
     return begin, size, bboxes
 
 
-tf.function(input_signature=[
-    tf.TensorSpec([None, None, 3], dtype=tf.float32),
-    tf.TensorSpec([None, 4], dtype=tf.float32),
-    tf.TensorSpec([], dtype=tf.int32),
-    tf.TensorSpec([], dtype=tf.int32)
-])
-
-
 def random_size_crop(img, boxes, labels, min_size, max_size):
     """
 

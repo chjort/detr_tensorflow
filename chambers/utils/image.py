@@ -58,3 +58,13 @@ def normalize_image(image):
 
     image = (image / 255.0 - channel_avg) / channel_std
     return image
+
+
+def resnet_imagenet_normalize(x):
+    x = tf.cast(x, tf.float32)
+
+    # RGB -> BGR
+    x = x[..., ::-1]
+    x = normalize_image(x, mean=[103.939, 116.779, 123.68])
+
+    return x

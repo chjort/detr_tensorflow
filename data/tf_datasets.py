@@ -4,7 +4,7 @@ import tensorflow_datasets as tfds
 from chambers.augmentations import random_resize_min, box_denormalize_yxyx, flip_left_right, \
     random_size_crop, resize, box_normalize_yxyx
 from chambers.utils.boxes import box_xywh_to_yxyx
-from chambers.utils.image import read_jpeg, normalize_image
+from chambers.utils.image import read_jpeg, resnet_imagenet_normalize
 from data.coco import CocoDetection
 
 N_PARALLEL = -1
@@ -43,7 +43,7 @@ def augment_val(img, boxes, labels):
 
 
 def normalize(img, boxes, labels):
-    img = normalize_image(img)
+    img = resnet_imagenet_normalize(img)
     boxes = box_normalize_yxyx(boxes, img)
     return img, boxes, labels
 

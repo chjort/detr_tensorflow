@@ -161,8 +161,10 @@ def DETR(input_shape, n_classes, n_object_queries, embed_dim, num_heads, dim_fee
         proj.supports_masking = True
 
     pos_enc = PositionalEmbedding2D(embed_dim, normalize=True, add_to_input=False)(x_enc)
-    pos_enc = tf.keras.layers.Reshape([-1, embed_dim], name="positional_encoding_sequence")(pos_enc)  # (batch_size, h*w, embed_dim)
-    x_enc = ReshapeWithMask([-1, embed_dim], [-1], name="image_features_sequence")(x_enc)  # (batch_size, h*w, embed_dim)
+    pos_enc = tf.keras.layers.Reshape([-1, embed_dim], name="positional_encoding_sequence")(
+        pos_enc)  # (batch_size, h*w, embed_dim)
+    x_enc = ReshapeWithMask([-1, embed_dim], [-1], name="image_features_sequence")(
+        x_enc)  # (batch_size, h*w, embed_dim)
 
     enc_output = TransformerEncoderDETR(embed_dim, num_heads, dim_feedforward, num_encoder_layers, dropout_rate,
                                         norm=False)([x_enc, pos_enc])
@@ -184,7 +186,7 @@ def DETR(input_shape, n_classes, n_object_queries, embed_dim, num_heads, dim_fee
     return model
 
 
-def load_detr(path):
+def load_detr(path, compile=True):
     if path.endswith(".h5") or path.endswith(".hdf5"):
         from tensorflow_addons.optimizers import AdamW
         from chambers.layers.masking import ReshapeWithMask, DownsampleMasking
@@ -201,15 +203,39 @@ def load_detr(path):
                                               "LearningRateMultiplier": LearningRateMultiplier,
                                               "Addons>AdamW": AdamW,
                                               "HungarianLoss": HungarianLoss
-                                          })
+                                          },
+                                          compile=compile)
     else:
         from chambers.losses.hungarian import HungarianLoss
         detr = tf.keras.models.load_model(path,
                                           custom_objects={
                                               "HungarianLoss": HungarianLoss
-                                          })
+                                          },
+                                          compile=compile)
 
     return detr
+
+
+def post_process(y_pred, keep=None):
+    boxes = y_pred[..., :4]
+    logits = y_pred[..., 4:]
+
+    softmax = tf.nn.softmax(logits, axis=-1)[..., :-1]
+    labels = tf.argmax(softmax, axis=-1)
+    probs = tf.reduce_max(softmax, axis=-1)
+
+    boxes = boxes.numpy()
+    labels = labels.numpy()
+    probs = probs.numpy()
+
+    if keep is not None:
+        keep = float(keep)
+        keep_mask = probs > keep
+        boxes = boxes[keep_mask]
+        labels = labels[keep_mask]
+        probs = probs[keep_mask]
+
+    return boxes, labels, probs
 
 # %%
 # num_classes = 91
