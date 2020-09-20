@@ -22,7 +22,7 @@ def imshow(img):
 
 
 def plot_results(img, boxes, labels=None, probs=None, colors=None, linewidth=3, text_color="yellow", text_alpha=0.5,
-                 fontsize=None, figsize=(16, 10), return_img=False):
+                 fontsize=None, figsize=None, return_img=False):
     """
     Plots the bounding boxes and labels onto an image.
 

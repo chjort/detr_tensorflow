@@ -1,3 +1,4 @@
+import numpy as np
 import tensorflow as tf
 
 
@@ -39,7 +40,7 @@ def resize(image, min_side=800, max_side=1333):
     return image
 
 
-def denormalize_image(image):
+def denormalize_image_torch(image):
     image = tf.cast(image, dtype=tf.float32)
     channel_avg = tf.constant([0.485, 0.456, 0.406])
     channel_std = tf.constant([0.229, 0.224, 0.225])
@@ -51,7 +52,7 @@ def denormalize_image(image):
     return image
 
 
-def normalize_image(image):
+def normalize_image_torch(image):
     image = tf.cast(image, dtype=tf.float32)
     channel_avg = tf.constant([0.485, 0.456, 0.406], dtype=tf.float32)
     channel_std = tf.constant([0.229, 0.224, 0.225], dtype=tf.float32)
@@ -62,9 +63,36 @@ def normalize_image(image):
 
 def resnet_imagenet_normalize(x):
     x = tf.cast(x, tf.float32)
+    return tf.keras.applications.resnet.preprocess_input(x)
 
-    # RGB -> BGR
-    x = x[..., ::-1]
-    x = normalize_image(x, mean=[103.939, 116.779, 123.68])
 
+def resnet_imagenet_denormalize(x):
+    x = tf.cast(x, tf.float32)
+    data_format = tf.keras.backend.image_data_format()
+    mean = [103.939, 116.779, 123.68]
+    std = None
+
+    if std is not None:
+        x *= std
+
+    mean_tensor = tf.keras.backend.constant(np.array(mean))
+
+    # Zero-center by mean pixel
+    if tf.keras.backend.dtype(x) != tf.keras.backend.dtype(mean_tensor):
+        x = tf.keras.backend.bias_add(
+            x, tf.keras.backend.cast(mean_tensor, tf.keras.backend.dtype(x)), data_format=data_format)
+    else:
+        x = tf.keras.backend.bias_add(x, mean_tensor, data_format)
+
+    if data_format == 'channels_first':
+        # 'BGR'->'RGB'
+        if tf.keras.backend.ndim(x) == 3:
+            x = x[::-1, ...]
+        else:
+            x = x[:, ::-1, ...]
+    else:
+        # 'BGR'->'RGB'
+        x = x[..., ::-1]
+
+    x = tf.cast(x, tf.uint8)
     return x
