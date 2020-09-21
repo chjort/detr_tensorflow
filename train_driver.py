@@ -16,7 +16,7 @@ model_path = None
 # %% strategy
 strategy = tf.distribute.MirroredStrategy()
 
-# %%
+# %% loading data
 BATCH_SIZE_PER_REPLICA = 3
 GLOBAL_BATCH_SIZE = BATCH_SIZE_PER_REPLICA * strategy.num_replicas_in_sync
 
@@ -25,8 +25,9 @@ train_dataset, N_train = load_coco("/datadrive/crr/datasets/coco", "train", GLOB
 val_dataset, N_val = load_coco("/datadrive/crr/datasets/coco", "val", GLOBAL_BATCH_SIZE)
 
 train_dataset = train_dataset.prefetch(-1)
+val_dataset = val_dataset.prefetch(-1)
 
-# %%
+# %% building model
 print("\n### BUILDING MODEL ###")
 
 
@@ -72,17 +73,20 @@ def build_and_compile_detr():
     return detr
 
 
+# build model
 with strategy.scope():
     if model_path is not None:
         print("Loading model:", model_path)
         detr = load_detr(model_path)
     else:
-        print("Initializing model.")
+        print("Initializing model...")
         detr = build_and_compile_detr()
 
 detr.summary()
 
-# %% TRAIN
+# %% train
+
+# set training configuration
 print("\n### TRAINING ###")
 EPOCHS = 10  # 150
 N_train = 200
@@ -106,15 +110,19 @@ checkpoint_path = os.path.join(checkpoint_dir, "model-epoch{epoch}.h5")
 csv_path = os.path.join(log_dir, "logs.csv")
 tensorboard_path = os.path.join(log_dir, "tb")
 
+# create callbacks
 callbacks = [
     HungarianLossLogger(val_dataset, steps=VAL_STEPS_PER_EPOCH),
     DETRLossDiffLogger("samples/fb_log.txt"),
     tf.keras.callbacks.CSVLogger(csv_path),
-    # ssh -L 6006:127.0.0.1:6006 crr@40.68.160.55
-    GroupedTensorBoard(tensorboard_path),
-    tf.keras.callbacks.TensorBoard(log_dir=tensorboard_path, write_graph=True,
-                                   update_freq="epoch", profile_batch=0),
-    DETRPredImageTensorboard(log_dir=tensorboard_path, min_prob=(0.0, 0.1, 0.5, 0.7),
+    GroupedTensorBoard(loss_groups=["val_loss_ce", "val_loss_l1", "val_loss_giou"],
+                       writer_prefixes="decode_layer",
+                       log_dir=tensorboard_path,
+                       write_graph=True,
+                       update_freq="epoch",
+                       profile_batch=0),
+    DETRPredImageTensorboard(log_dir=tensorboard_path,
+                             min_prob=(0.0, 0.1, 0.5, 0.7),
                              image_files=["samples/sample0.jpg",
                                           "samples/sample1.png",
                                           "samples/sample2.jpg"
@@ -127,6 +135,7 @@ callbacks = [
                                        ),
 ]
 
+# fit
 detr.save(os.path.join(checkpoint_dir, "model-init.h5"))  # save initialization
 history = detr.fit(train_dataset,
                    epochs=EPOCHS,
@@ -134,9 +143,12 @@ history = detr.fit(train_dataset,
                    callbacks=callbacks
                    )
 
+# Tensorboard: # ssh -L 6006:127.0.0.1:6006 crr@40.68.160.55
+
 """ TODO:
 * Group sublosses for decode layers in Tensorboard
 * Test model on 8 GPUs
-* Set device batch size to 4 on Tesla V100 32GB
-* Set EPOCHS = 150
+    * set caching for datasets
+    * Set device batch size to 4 on Tesla V100 32GB
+    * Set EPOCHS = 150
 """

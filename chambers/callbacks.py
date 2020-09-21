@@ -11,21 +11,114 @@ from chambers.utils.utils import plot_results
 from data.coco import CLASSES
 
 
-class GroupedTensorBoard(tf.keras.callbacks.Callback):
-    def __init__(self, log_dir):
-        self.log_dir = os.path.join(log_dir, "validation")
+class GroupedTensorBoard(tf.keras.callbacks.TensorBoard):
+    def __init__(self,
+                 loss_groups,
+                 writer_prefixes="writer",
+                 log_dir='logs',
+                 histogram_freq=0,
+                 write_graph=True,
+                 write_images=False,
+                 update_freq='epoch',
+                 profile_batch=2,
+                 embeddings_freq=0,
+                 embeddings_metadata=None,
+                 **kwargs):
+        super(GroupedTensorBoard, self).__init__(log_dir=log_dir,
+                                                 histogram_freq=histogram_freq,
+                                                 write_graph=write_graph,
+                                                 write_images=write_images,
+                                                 update_freq=update_freq,
+                                                 profile_batch=profile_batch,
+                                                 embeddings_freq=embeddings_freq,
+                                                 embeddings_metadata=embeddings_metadata,
+                                                 **kwargs)
+        self.loss_groups = loss_groups
+        self.writer_prefixes = writer_prefixes
+        self.log_dir_groups = os.path.join(self.log_dir, "groups")
         self.writers = None
 
+    def on_train_begin(self, logs=None):
+        os.makedirs(self.log_dir_groups, exist_ok=True)
+        super(GroupedTensorBoard, self).on_train_begin(logs)
+
     def on_epoch_end(self, epoch, logs=None):
-        # TODO: get sublosses for all decode layers
+        if not isinstance(self.loss_groups[0], str):
+            # if nested list
+
+            if isinstance(self.writer_prefixes, str) or len(self.writer_prefixes) != len(self.loss_groups):
+                raise ValueError("`writer_prefixes` must be a list of strings with same length as `loss_groups`.")
+
+            losses = {}
+            for loss_group, writer_prefix in zip(self.loss_groups, self.writer_prefixes):
+                writer_losses, logs = self._filter_writer_losses(logs, loss_group, writer_prefix)
+                losses.update(writer_losses)
+        else:
+            if not isinstance(self.writer_prefixes, str):
+                raise ValueError("`writer_prefixes` must be a string when there is only one loss group.")
+            losses, logs = self._filter_writer_losses(logs, self.loss_group, self.writer_prefixes)
 
         if self.writers is None:
-            # TODO: create a writer for each decode layer
-            # tf.summary.create_file_writer(os.path.join(self.log_dir, "decode_layer" + str(i)))
-            pass
+            # create writers
+            self.writers = {k: tf.summary.create_file_writer(os.path.join(self.log_dir_groups, k)) for k in
+                            losses.keys()}
 
-        with self.writer.as_default():
-            tf.summary.scalar("decode_epoch_loss_ce", epoch, epoch)
+        for writer_name, loss_dict in losses.items():
+            writer = self.writers[writer_name]
+            with writer.as_default():
+                for loss_name, loss_val in loss_dict.items():
+                    tf.summary.scalar(loss_name, data=loss_val, step=epoch)
+
+        # Call super TensorBoard
+        super(GroupedTensorBoard, self).on_epoch_end(epoch, logs)
+
+    @staticmethod
+    def _filter_writer_losses(logs, loss_names, writer_prefix):
+        """
+        Gets losses for each writer
+
+        Example:
+            >>> logs = {
+                    'loss': 0.34, 'val_loss': 0.41
+                    'A': 1, 'B': 2, 'C': 3,
+                    'A_0': 4, 'B_0': 5, 'C_0': 6,
+                    'A_1': 7, 'B_1': 8, 'C_1': 9
+                }
+            >>> loss_names = ['A', 'B', 'C']
+            >>> writer_prefix = "writer"
+            >>> self._filter_writer_losses(logs, loss_names, writer_prefix)
+            {
+                'writer' : {'A': 1, 'B': 2, 'C': 3},
+                'writer_0' {'A': 4, 'B': 5, 'C': 6},
+                'writer_1' {'A': 7, 'B': 8, 'C': 9},
+            },
+            {'loss': 0.34, 'val_loss': 0.41}
+
+        :param logs: Dictionary with keys
+        :param loss_names:
+        :return: dictionary with writer names and losses, and a logs dictionary where found losses are removed.
+        """
+        logs = logs.copy()
+        losses = {}
+        for loss_name in loss_names:
+            try:
+                loss_val = logs.pop(loss_name)
+                losses.setdefault(writer_prefix, {}).update({loss_name: loss_val})
+            except KeyError:
+                pass
+
+            do = True
+            i = 0
+            while do:
+                try:
+                    k = loss_name + "_" + str(i)
+                    loss_val = logs.pop(k)
+                    writer_name = writer_prefix + "_" + str(i)
+                    losses.setdefault(writer_name, {}).update({loss_name: loss_val})
+                    i = i + 1
+                except KeyError:
+                    do = False
+        return losses, logs
 
 
 class LearningRateLogger(tf.keras.callbacks.Callback):
