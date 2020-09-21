@@ -146,7 +146,6 @@ history = detr.fit(train_dataset,
 # Tensorboard: # ssh -L 6006:127.0.0.1:6006 crr@40.68.160.55
 
 """ TODO:
-* Group sublosses for decode layers in Tensorboard
 * Test model on 8 GPUs
     * set caching for datasets
     * Set device batch size to 4 on Tesla V100 32GB
