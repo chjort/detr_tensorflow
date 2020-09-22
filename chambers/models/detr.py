@@ -236,35 +236,3 @@ def post_process(y_pred, min_prob=None):
         probs = probs[keep_mask]
 
     return boxes, labels, probs
-
-# %%
-# num_classes = 91
-# embed_dim = 256
-# n_object_queries_ = 100
-# batch_size = 2
-# input_shape = (896, 1216, 3)
-# # input_shape = (None, None, 3)
-# return_sequence = False
-#
-# model = DETR(input_shape=input_shape,
-#              n_classes=num_classes,
-#              n_object_queries=n_object_queries_,
-#              embed_dim=embed_dim,
-#              num_heads=8,
-#              dim_feedforward=2048,
-#              num_encoder_layers=6,
-#              num_decoder_layers=6,
-#              dropout_rate=0.1,
-#              return_decode_sequence=return_sequence,
-#              mask_value=-1.
-#              )
-# model.summary()
-
-# %%
-# x1 = np.random.normal(size=(batch_size, 544, 896, 3))
-# x1 = np.pad(x1, [(0, 0), (0, 352), (0, 320), (0, 0)], mode="constant", constant_values=-1.)
-# print(x1.shape)
-#
-# z = model(x1)
-# print(z.shape)
-# # print(z._keras_mask.shape)
