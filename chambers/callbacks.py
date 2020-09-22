@@ -56,7 +56,7 @@ class GroupedTensorBoard(tf.keras.callbacks.TensorBoard):
         else:
             if not isinstance(self.writer_prefixes, str):
                 raise ValueError("`writer_prefixes` must be a string when there is only one loss group.")
-            losses, logs = self._filter_writer_losses(logs, self.loss_group, self.writer_prefixes)
+            losses, logs = self._filter_writer_losses(logs, self.loss_groups, self.writer_prefixes)
 
         if self.writers is None:
             # create writers
