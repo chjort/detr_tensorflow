@@ -14,10 +14,13 @@ from data.tf_datasets import load_coco
 model_path = None
 
 # %% strategy
-strategy = tf.distribute.MirroredStrategy()
+strategy = tf.distribute.MirroredStrategy(devices=["/gpu:0", "/gpu:1", "/gpu:2", "/gpu:3",
+                                                   "/gpu:4", "/gpu:5", "/gpu:6",
+                                                   "/gpu:7"
+                                                   ])
 
 # %% loading data
-BATCH_SIZE_PER_REPLICA = 3
+BATCH_SIZE_PER_REPLICA = 4
 GLOBAL_BATCH_SIZE = BATCH_SIZE_PER_REPLICA * strategy.num_replicas_in_sync
 
 print("\n### LOADING DATA ###")
@@ -89,7 +92,7 @@ detr.summary()
 # set training configuration
 print("\n### TRAINING ###")
 EPOCHS = 10  # 150
-N_train = 200
+N_train = 432
 N_val = 100
 STEPS_PER_EPOCH = N_train // GLOBAL_BATCH_SIZE
 VAL_STEPS_PER_EPOCH = N_val // GLOBAL_BATCH_SIZE
@@ -140,7 +143,7 @@ detr.save(os.path.join(checkpoint_dir, "model-init.h5"))  # save initialization
 history = detr.fit(train_dataset,
                    epochs=EPOCHS,
                    steps_per_epoch=STEPS_PER_EPOCH,
-                   callbacks=callbacks
+                   # callbacks=callbacks
                    )
 
 # Tensorboard: # ssh -L 6006:127.0.0.1:6006 crr@40.68.160.55
@@ -148,6 +151,17 @@ history = detr.fit(train_dataset,
 """ TODO:
 * Test model on 8 GPUs
     * set caching for datasets
-    * Set device batch size to 4 on Tesla V100 32GB
     * Set EPOCHS = 150
+"""
+
+""" 6 GPU
+18/18 [==============================] - 157s 9s/step - loss: 86.6874
+Epoch 2/10
+18/18 [==============================] - 37s 2s/step - loss: 58.2329
+Epoch 3/10
+18/18 [==============================] - 35s 2s/step - loss: 53.1096
+Epoch 4/10
+18/18 [==============================] - 33s 2s/step - loss: 51.3836
+Epoch 5/10
+18/18 [==============================] - 35s 2s/step - loss: 50.1125
 """
