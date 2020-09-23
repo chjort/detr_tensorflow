@@ -8,7 +8,6 @@ from chambers.losses.hungarian import HungarianLoss as _HungarianLoss
 from chambers.models.detr import post_process
 from chambers.utils.image import read_image, resnet_imagenet_normalize
 from chambers.utils.utils import plot_results
-from data.coco import CLASSES
 
 
 class GroupedTensorBoard(tf.keras.callbacks.TensorBoard):
@@ -147,7 +146,9 @@ class HungarianLossLogger(tf.keras.callbacks.Callback):
                              "only be used when the model is compiled with HungarianLoss.")
 
         if self.hungarian is None:
-            self.hungarian = _HungarianLoss(loss_weights=self.model.loss.loss_weights,
+            self.hungarian = _HungarianLoss(n_classes=self.model.loss.n_classes,
+                                            no_class_weight=self.model.loss.no_class_weight,
+                                            loss_weights=self.model.loss.loss_weights,
                                             lsa_loss_weights=self.model.loss.lsa_loss_weights,
                                             mask_value=self.model.loss.mask_value,
                                             sequence_input=self.model.loss.sequence_input,
@@ -203,11 +204,12 @@ class DETRLossDiffLogger(tf.keras.callbacks.Callback):
 
 
 class DETRPredImageTensorboard(tf.keras.callbacks.Callback):
-    def __init__(self, log_dir, image_files, min_prob=(0.0, 0.1, 0.5, 0.7)):
+    def __init__(self, log_dir, image_files, min_prob=(0.0, 0.1, 0.5, 0.7), label_names=None):
         super(DETRPredImageTensorboard, self).__init__()
         self.log_dir = os.path.join(log_dir, "validation")
         self.image_files = image_files
         self.min_prob = list(min_prob) if isinstance(min_prob, Iterable) else [min_prob]
+        self.label_names = label_names
         self.images = []
         self.preprocessed_images = []
         self.writer = None
@@ -223,7 +225,7 @@ class DETRPredImageTensorboard(tf.keras.callbacks.Callback):
         pred_imgs = {}
         for i, (img, pred) in enumerate(zip(self.images, preds)):
             for keep in self.min_prob:
-                pred_img = self._draw_predictons(img, pred, CLASSES, min_prob=keep, fontsize=20)
+                pred_img = self._draw_predictons(img, pred, min_prob=keep, fontsize=20)
                 pred_imgs.setdefault("Prediction sample {} - min_probs: {}".format(i, self.min_prob), []).append(
                     pred_img)
 
@@ -231,9 +233,14 @@ class DETRPredImageTensorboard(tf.keras.callbacks.Callback):
             for name, imgs in pred_imgs.items():
                 tf.summary.image(name, imgs, max_outputs=len(imgs), step=epoch)
 
-    def _draw_predictons(self, img, y_pred, label_names, min_prob=None, figsize=None, fontsize=None):
+    def _draw_predictons(self, img, y_pred, min_prob=None, figsize=None, fontsize=None):
         boxes_pred, labels_pred, probs_pred = post_process(y_pred, min_prob=min_prob)
-        label_names_pred = [label_names[label] for label in labels_pred]
+
+        if self.label_names is not None:
+            label_names_pred = [self.label_names[label] for label in labels_pred]
+        else:
+            label_names_pred = labels_pred
+
         pred_img = plot_results(img, boxes_pred, label_names_pred, probs_pred, linewidth=1.5, figsize=figsize,
                                 fontsize=fontsize, return_img=True)
         return pred_img

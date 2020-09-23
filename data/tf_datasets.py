@@ -9,6 +9,38 @@ from data.coco import CocoDetection
 
 N_PARALLEL = -1
 
+CLASSES = [
+    'N/A', 'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus',
+    'train', 'truck', 'boat', 'traffic light', 'fire hydrant', 'N/A',
+    'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse',
+    'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'N/A', 'backpack',
+    'umbrella', 'N/A', 'N/A', 'handbag', 'tie', 'suitcase', 'frisbee', 'skis',
+    'snowboard', 'sports ball', 'kite', 'baseball bat', 'baseball glove',
+    'skateboard', 'surfboard', 'tennis racket', 'bottle', 'N/A', 'wine glass',
+    'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple', 'sandwich',
+    'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake',
+    'chair', 'couch', 'potted plant', 'bed', 'N/A', 'dining table', 'N/A',
+    'N/A', 'toilet', 'N/A', 'tv', 'laptop', 'mouse', 'remote', 'keyboard',
+    'cell phone', 'microwave', 'oven', 'toaster', 'sink', 'refrigerator', 'N/A',
+    'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier',
+    'toothbrush'
+]
+CLASSES_TF = [
+    'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus',
+    'train', 'truck', 'boat', 'traffic light', 'fire hydrant',
+    'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse',
+    'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'backpack',
+    'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee', 'skis',
+    'snowboard', 'sports ball', 'kite', 'baseball bat', 'baseball glove',
+    'skateboard', 'surfboard', 'tennis racket', 'bottle', 'wine glass',
+    'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple', 'sandwich',
+    'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake',
+    'chair', 'couch', 'potted plant', 'bed', 'dining table', 'toilet',
+    'tv', 'laptop', 'mouse', 'remote', 'keyboard', 'cell phone', 'microwave',
+    'oven', 'toaster', 'sink', 'refrigerator', 'book', 'clock', 'vase', 'scissors',
+    'teddy bear', 'hair drier', 'toothbrush'
+]
+
 
 def augment(img, boxes, labels):
     img, boxes = tf.cond(tf.random.uniform([1], 0, 1) > 0.5,
@@ -57,7 +89,7 @@ def load_coco(coco_path, split, batch_size):
         lambda img_path, boxes, labels: (read_jpeg(img_path), box_xywh_to_yxyx(boxes), tf.cast(labels, tf.float32)),
         num_parallel_calls=N_PARALLEL
     )
-    # dataset = dataset.cache()
+    dataset = dataset.cache()
     if split == "train":
         dataset = dataset.repeat()
         # dataset = dataset.shuffle(1024)
@@ -81,8 +113,8 @@ def load_coco(coco_path, split, batch_size):
         n_samples_no_label = 43
     else:
         n_samples_no_label = 0
-    N = len(coco_data) - n_samples_no_label
-    return dataset, N
+    n = len(coco_data) - n_samples_no_label
+    return dataset, n
 
 
 def load_coco_tf(split, batch_size):
@@ -120,5 +152,5 @@ def load_coco_tf(split, batch_size):
         n_samples_no_label = 48
     else:
         n_samples_no_label = 0
-    N = info.splits[split].num_examples - n_samples_no_label
-    return dataset, N
+    n = info.splits[split].num_examples - n_samples_no_label
+    return dataset, n
