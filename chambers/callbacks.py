@@ -133,6 +133,7 @@ class LearningRateLogger(tf.keras.callbacks.Callback):
 class HungarianLossLogger(tf.keras.callbacks.Callback):
     def __init__(self, dataset: tf.data.Dataset, steps=None):
         super(HungarianLossLogger, self).__init__()
+        self._supports_tf_logs = True
         self.dataset = dataset
         self.steps = steps
         self.loss_names = ["loss_ce", "loss_l1", "loss_giou"]
@@ -183,6 +184,7 @@ class HungarianLossLogger(tf.keras.callbacks.Callback):
 class DETRLossDiffLogger(tf.keras.callbacks.Callback):
     def __init__(self, log_file):
         super(DETRLossDiffLogger, self).__init__()
+        self._supports_tf_logs = True
         self.log_file = log_file
 
         with open(self.log_file, "r") as f:
