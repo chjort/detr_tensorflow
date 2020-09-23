@@ -21,7 +21,7 @@ class LearningRateMultiplier(tf.keras.optimizers.Optimizer):
             )
 
         if not isinstance(lr_multipliers, dict):
-            raise TypeError("sequential_update must be of type dict")
+            raise TypeError("lr_multipliers must be of type dict")
 
         self._optimizer = optimizer
         self.lr_multipliers = lr_multipliers

@@ -64,7 +64,7 @@ def build_and_compile_detr():
                                beta_1=0.9,
                                beta_2=0.999,
                                epsilon=1e-8,
-                               # clipnorm=0.1,
+                               # clipnorm=0.1,  # 'clipnorm' argument not compatible with Multi-GPU training
                                amsgrad=False,
                                )
 
@@ -155,6 +155,7 @@ history = detr.fit(train_dataset,
 # Tensorboard: # ssh -L 6006:127.0.0.1:6006 crr@40.68.160.55
 
 """ TODO:
+* Test loading of model
 * Test model on 8 GPUs
     * set caching for datasets
     * Set EPOCHS = 150
