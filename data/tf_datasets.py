@@ -117,10 +117,10 @@ def load_coco(coco_path, split, batch_size):
     return dataset, n
 
 
-def load_coco_tf(split, batch_size):
+def load_coco_tf(split, batch_size, data_dir=None):
     dataset, info = tfds.load("coco/2017",
                               split=split,
-                              data_dir="/datadrive/crr/tensorflow_datasets",
+                              data_dir=data_dir,
                               with_info=True)
 
     print(info.features)  # bbox format: [y_min, x_min, y_max, x_max]

@@ -22,12 +22,12 @@ strategy = tf.distribute.MirroredStrategy(devices=["/gpu:0", "/gpu:1", "/gpu:2",
 # strategy = tf.distribute.OneDeviceStrategy("/gpu:0")
 
 # %% loading data
-BATCH_SIZE_PER_REPLICA = 3
+BATCH_SIZE_PER_REPLICA = 4
 GLOBAL_BATCH_SIZE = BATCH_SIZE_PER_REPLICA * strategy.num_replicas_in_sync
 
 print("\n### LOADING DATA ###")
-train_dataset, n_train = load_coco_tf("train", GLOBAL_BATCH_SIZE)
-val_dataset, n_val = load_coco_tf("validation", GLOBAL_BATCH_SIZE)
+train_dataset, n_train = load_coco_tf("train", GLOBAL_BATCH_SIZE, "/datadrive/crr/tensorflow_datasets")
+val_dataset, n_val = load_coco_tf("validation", GLOBAL_BATCH_SIZE, "/datadrive/crr/tensorflow_datasets")
 
 train_dataset = train_dataset.prefetch(-1)
 val_dataset = val_dataset.prefetch(-1)
