@@ -10,7 +10,7 @@ from chambers.optimizers import LearningRateMultiplier
 from chambers.utils.utils import timestamp_now
 from data.tf_datasets import load_coco_tf, CLASSES_TF
 
-# model_path = "outputs/2020-09-14_20:58:52/model-epoch2.h5"
+# model_path = "outputs/2020-09-24_17-01-41/checkpoints/model-init.h5"
 model_path = None
 
 # %% strategy
@@ -33,6 +33,9 @@ train_dataset = train_dataset.prefetch(-1)
 val_dataset = val_dataset.prefetch(-1)
 
 N_CLASSES = len(CLASSES_TF)
+print("Number of training samples:", n_train)
+print("Number of validation samples:", n_val)
+print("Number of classes:", N_CLASSES)
 
 # %% building model
 print("\n### BUILDING MODEL ###")
@@ -96,9 +99,9 @@ detr.summary()
 
 # set training configuration
 print("\n### TRAINING ###")
-EPOCHS = 5  # 150
-n_train = 200
-n_val = 100
+EPOCHS = 2  # 150
+# n_train = 200
+# n_val = 100
 STEPS_PER_EPOCH = n_train // GLOBAL_BATCH_SIZE
 VAL_STEPS_PER_EPOCH = n_val // GLOBAL_BATCH_SIZE
 
