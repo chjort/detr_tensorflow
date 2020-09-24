@@ -93,9 +93,11 @@ class HungarianLoss(tf.keras.losses.Loss):
         # Ignore cost matrices that are all NaN.
         nan_matrices = tf.reduce_all(tf.math.is_nan(cost_matrix), axis=(1, 2))
         if tf.reduce_all(nan_matrices):
+            tf.print("Warning: Hungarian NaN:", nan_matrices)
             return np.nan, np.nan, np.nan
 
         if tf.reduce_any(nan_matrices):
+            tf.print("Warning: Hungarian NaN:", nan_matrices)
             no_nan_matrices = tf.logical_not(nan_matrices)
             cost_matrix = tf.ragged.boolean_mask(cost_matrix, no_nan_matrices)
             batch_mask = tf.cast(
