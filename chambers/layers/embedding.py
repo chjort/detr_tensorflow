@@ -3,10 +3,12 @@ import tensorflow as tf
 
 
 class PositionalEmbedding1D(tf.keras.layers.Layer):
-    def __init__(self, embedding_dim, temperature=10000, **kwargs):
+    def __init__(self, embedding_dim, temperature=10000, add_to_input=True, **kwargs):
         super(PositionalEmbedding1D, self).__init__(**kwargs)
         self.embedding_dim = embedding_dim
-        self.temperature = temperature
+        self.temperature = tf.cast(temperature, tf.float32)
+        self.add_to_input = add_to_input
+        self.supports_masking = True
 
     def call(self, inputs, mask=None, **kwargs):
         tf.assert_rank(inputs, 3)
@@ -18,32 +20,44 @@ class PositionalEmbedding1D(tf.keras.layers.Layer):
             ones = tf.ones(tf.shape(inputs)[:-1], dtype=tf.float32)  # shape [batch_size, h, w]
 
         sequence_len = tf.shape(ones)[1]
-        positional_mask = self.positional_encoding(sequence_len, self.embedding_dim)
+        x = self.positional_encoding(sequence_len, self.embedding_dim)
 
-        return inputs + positional_mask
+        if self.add_to_input:
+            x = inputs + x
 
-    def get_angles(self, pos, i):
-        # TODO: Use Tensorflow not numpy!
-        angle_rates = 1 / np.power(self.temperature, (2 * (i // 2)) / np.float32(self.embedding_dim))
+        return x
+
+    def get_angles(self, pos, i, d_model):
+        pos = tf.cast(pos, tf.float32)
+        i = tf.cast(i, tf.float32)
+        d_model = tf.cast(d_model, tf.float32)
+
+        angle_rates = 1. / tf.pow(self.temperature, (2. * (i // 2.)) / d_model)
         return pos * angle_rates
 
     def positional_encoding(self, position, d_model):
-        # TODO: Use Tensorflow not numpy!
-        angle_rads = self.get_angles(np.arange(position)[:, np.newaxis],
-                                     np.arange(d_model)[np.newaxis, :])
+        angle_rads = self.get_angles(tf.range(position)[:, tf.newaxis],
+                                     tf.range(d_model)[tf.newaxis, :],
+                                     d_model)
 
         # apply sin to even indices in the array; 2i
-        angle_rads[:, 0::2] = np.sin(angle_rads[:, 0::2])
+        sine_pos = tf.sin(angle_rads[:, 0::2])
 
         # apply cos to odd indices in the array; 2i+1
-        angle_rads[:, 1::2] = np.cos(angle_rads[:, 1::2])
+        cos_pos = tf.cos(angle_rads[:, 1::2])
 
-        pos_encoding = angle_rads[np.newaxis, ...]
+        # interleave sine and cosine
+        pos_encoding = tf.reshape(
+            tf.concat([sine_pos[..., tf.newaxis], cos_pos[..., tf.newaxis]], axis=-1),
+            [tf.shape(sine_pos)[0], -1])
+
+        pos_encoding = pos_encoding[tf.newaxis, ...]
 
         return tf.cast(pos_encoding, dtype=tf.float32)
 
     def get_config(self):
-        config = {'embedding_dim': self.embedding_dim, "temperature": self.temperature}
+        config = {'embedding_dim': self.embedding_dim, "temperature": self.temperature,
+                  "add_to_input": self.add_to_input}
         base_config = super(PositionalEmbedding1D, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
 
@@ -64,6 +78,7 @@ class PositionalEmbedding2D(tf.keras.layers.Layer):
         self.scale = scale
         self.eps = eps
         self.add_to_input = add_to_input
+        self.supports_masking = True
 
     def call(self, inputs, mask=None, **kwargs):
         tf.assert_rank(inputs, 4)
@@ -80,9 +95,6 @@ class PositionalEmbedding2D(tf.keras.layers.Layer):
             x = inputs + x
 
         return x
-
-    def compute_mask(self, inputs, mask=None):
-        return mask
 
     def compute_positional_mask(self, input_mask):
         y_embed = tf.math.cumsum(input_mask, axis=1)
