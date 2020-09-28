@@ -12,6 +12,7 @@ class Attention(layers.Layer):
         self.key_linear = tf.keras.layers.Dense(embed_dim)
         self.value_linear = tf.keras.layers.Dense(embed_dim)
         self.dropout = tf.keras.layers.Dropout(dropout_rate)
+        self.supports_masking = True
 
     def call(self, inputs, mask=None, training=None):
         # mask shape (batch_size, seq_len_q, seq_len_k). `0` for masking and `1` for no masking
@@ -51,9 +52,6 @@ class Attention(layers.Layer):
         else:
             return output
 
-    def compute_mask(self, inputs, mask=None):
-        return mask
-
 
 class MultiHeadSelfAttention(layers.Layer):
     def __init__(self, embed_dim, num_heads=8, dropout_rate=0.0, **kwargs):
@@ -71,6 +69,7 @@ class MultiHeadSelfAttention(layers.Layer):
         self.value_dense = layers.Dense(embed_dim)
         self.projection_dense = layers.Dense(embed_dim)
         self.dropout = tf.keras.layers.Dropout(dropout_rate)
+        self.supports_masking = True
 
     def attention(self, query, key, value, mask=None, training=None):
         logits = tf.matmul(query, key, transpose_b=True)
@@ -90,9 +89,10 @@ class MultiHeadSelfAttention(layers.Layer):
                 key_mask = tf.expand_dims(tf.cast(key_mask, tf.float32), -1)
 
                 logits_mask = tf.matmul(query_mask, key_mask, transpose_b=True)  # [batch_size, seq_len_q, seq_len_k]
-                logits_mask = tf.expand_dims(logits_mask, 1)  # [batch_size, 1, seq_len_q, seq_len_k]
+                if tf.rank(scaled_logits) == 4:
+                    logits_mask = tf.expand_dims(logits_mask, 1)  # [batch_size, 1, seq_len_q, seq_len_k]
                 scaled_logits = scaled_logits + (-1e9 * (1.0 - logits_mask))  # apply mask
-                # tf.print(tf.shape(scaled_logits), tf.shape(logits_mask))
+                tf.print(tf.shape(scaled_logits), tf.shape(logits_mask))
 
         weights = tf.nn.softmax(scaled_logits, axis=-1)
         weights = self.dropout(weights, training=training)
@@ -130,6 +130,3 @@ class MultiHeadSelfAttention(layers.Layer):
         output = self.projection_dense(concat_attention)  # (batch_size, seq_len, embed_dim)
 
         return output
-
-    def compute_mask(self, inputs, mask=None):
-        return mask
