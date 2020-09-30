@@ -71,38 +71,6 @@ class MultiHeadSelfAttention(layers.Layer):
         self.dropout = tf.keras.layers.Dropout(dropout_rate)
         self.supports_masking = True
 
-    def attention(self, query, key, value, mask=None, training=None):
-        logits = tf.matmul(query, key, transpose_b=True)
-        dim_key = tf.cast(tf.shape(key)[-1], tf.float32)
-        scaled_logits = logits / tf.math.sqrt(dim_key)
-
-        if mask is not None:
-            query_mask, key_mask = mask[0], mask[1]
-
-            if query_mask is not None or key_mask is not None:
-                if query_mask is None:
-                    query_mask = tf.ones([tf.shape(query)[0], tf.shape(query)[2]], dtype=tf.float32)
-                if key_mask is None:
-                    key_mask = tf.ones([tf.shape(key)[0], tf.shape(key)[2]], dtype=tf.float32)
-
-                query_mask = tf.expand_dims(tf.cast(query_mask, tf.float32), -1)
-                key_mask = tf.expand_dims(tf.cast(key_mask, tf.float32), -1)
-
-                logits_mask = tf.matmul(query_mask, key_mask, transpose_b=True)  # [batch_size, seq_len_q, seq_len_k]
-                if tf.rank(scaled_logits) == 4:
-                    logits_mask = tf.expand_dims(logits_mask, 1)  # [batch_size, 1, seq_len_q, seq_len_k]
-                scaled_logits = scaled_logits + (-1e9 * (1.0 - logits_mask))  # apply mask
-                tf.print(tf.shape(scaled_logits), tf.shape(logits_mask))
-
-        weights = tf.nn.softmax(scaled_logits, axis=-1)
-        weights = self.dropout(weights, training=training)
-        output = tf.matmul(weights, value)
-        return output, weights
-
-    def separate_heads(self, x, batch_size):
-        x = tf.reshape(x, (batch_size, -1, self.num_heads, self.projection_dim))
-        return tf.transpose(x, perm=[0, 2, 1, 3])
-
     def call(self, inputs, mask=None, training=None):
         """
 
@@ -130,3 +98,38 @@ class MultiHeadSelfAttention(layers.Layer):
         output = self.projection_dense(concat_attention)  # (batch_size, seq_len, embed_dim)
 
         return output
+
+    def separate_heads(self, x, batch_size):
+        x = tf.reshape(x, (batch_size, -1, self.num_heads, self.projection_dim))
+        return tf.transpose(x, perm=[0, 2, 1, 3])
+
+    def attention(self, query, key, value, mask=None, training=None):
+        logits = tf.matmul(query, key, transpose_b=True)
+        dim_key = tf.cast(tf.shape(key)[-1], tf.float32)
+        scaled_logits = logits / tf.math.sqrt(dim_key)
+
+        if mask is not None and (mask[0] is not None or mask[1] is not None):
+            query_mask, key_mask = mask[0], mask[1]
+            logits_mask = self._compute_weights_mask(query, key, query_mask, key_mask)
+            scaled_logits = scaled_logits + (-1e9 * (1.0 - logits_mask))  # apply mask
+            tf.print(tf.shape(scaled_logits), tf.shape(logits_mask))
+
+        weights = tf.nn.softmax(scaled_logits, axis=-1)
+        weights = self.dropout(weights, training=training)
+        output = tf.matmul(weights, value)
+        return output, weights
+
+    def _compute_weights_mask(self, query, key, query_mask, key_mask):
+        if query_mask is None:
+            query_mask = tf.ones([tf.shape(query)[0], tf.shape(query)[2]], dtype=tf.float32)
+        if key_mask is None:
+            key_mask = tf.ones([tf.shape(key)[0], tf.shape(key)[2]], dtype=tf.float32)
+
+        query_mask = tf.expand_dims(tf.cast(query_mask, tf.float32), -1)
+        key_mask = tf.expand_dims(tf.cast(key_mask, tf.float32), -1)
+
+        logits_mask = tf.matmul(query_mask, key_mask, transpose_b=True)  # [batch_size, seq_len_q, seq_len_k]
+        if tf.rank(query) == 4:
+            logits_mask = tf.expand_dims(logits_mask, 1)  # [batch_size, 1, seq_len_q, seq_len_k]
+
+        return logits_mask
