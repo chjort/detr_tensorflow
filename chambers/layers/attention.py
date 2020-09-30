@@ -1,64 +1,14 @@
 import tensorflow as tf
 from tensorflow.keras import layers
-
-
-class Attention(layers.Layer):
-    def __init__(self, embed_dim, dropout_rate=0.0, return_weights=False, **kwargs):
-        super(Attention, self).__init__(**kwargs)
-        self.embed_dim = embed_dim
-        self.dropout_rate = dropout_rate
-        self.return_weights = return_weights
-        self.query_linear = tf.keras.layers.Dense(embed_dim)
-        self.key_linear = tf.keras.layers.Dense(embed_dim)
-        self.value_linear = tf.keras.layers.Dense(embed_dim)
-        self.dropout = tf.keras.layers.Dropout(dropout_rate)
-        self.supports_masking = True
-
-    def call(self, inputs, mask=None, training=None):
-        # mask shape (batch_size, seq_len_q, seq_len_k). `0` for masking and `1` for no masking
-
-        query, key, value = inputs
-        # q, k, v shape = [batch_size, seq_len, embedding_dim]
-
-        query = self.query_linear(query)
-        key = self.query_linear(key)
-        value = self.query_linear(value)
-
-        logits = tf.matmul(query, key, transpose_b=True)
-        dim_key = tf.cast(tf.shape(key)[-1], tf.float32)
-        scaled_logits = logits / tf.math.sqrt(dim_key)
-
-        if mask is not None:
-            query_mask, key_mask = mask[0], mask[1]
-
-            if query_mask is not None or key_mask is not None:
-                if query_mask is None:
-                    query_mask = tf.ones([tf.shape(query)[0], tf.shape(query)[2]], dtype=tf.float32)
-                if key_mask is None:
-                    key_mask = tf.ones([tf.shape(key)[0], tf.shape(key)[2]], dtype=tf.float32)
-
-                query_mask = tf.expand_dims(tf.cast(query_mask, tf.float32), -1)
-                key_mask = tf.expand_dims(tf.cast(key_mask, tf.float32), -1)
-
-                logits_mask = tf.matmul(query_mask, key_mask, transpose_b=True)  # [batch_size, seq_len_q, seq_len_k]
-                scaled_logits = scaled_logits + (-1e9 * (1.0 - logits_mask))  # apply mask
-
-        weights = tf.nn.softmax(scaled_logits, axis=-1)
-        weights = self.dropout(weights, training=training)
-        output = tf.matmul(weights, value)
-
-        if self.return_weights:
-            return output, weights
-        else:
-            return output
-
+tf.keras.layers.Attention
 
 class MultiHeadSelfAttention(layers.Layer):
-    def __init__(self, embed_dim, num_heads=8, dropout_rate=0.0, **kwargs):
+    def __init__(self, embed_dim, num_heads=8, dropout_rate=0.0, look_ahead_mask=False, **kwargs):
         super(MultiHeadSelfAttention, self).__init__(**kwargs)
         self.embed_dim = embed_dim
         self.num_heads = num_heads
         self.dropout_rate = dropout_rate
+        self.look_ahead_mask = look_ahead_mask
         if embed_dim % num_heads != 0:
             raise ValueError(
                 f"embedding dimension = {embed_dim} should be divisible by number of heads = {num_heads}"
@@ -120,16 +70,33 @@ class MultiHeadSelfAttention(layers.Layer):
         return output, weights
 
     def _compute_weights_mask(self, query, key, query_mask, key_mask):
+        query_seq_len = tf.shape(query)[-2]
+        key_seq_len = tf.shape(key)[-2]
         if query_mask is None:
-            query_mask = tf.ones([tf.shape(query)[0], tf.shape(query)[2]], dtype=tf.float32)
+            query_mask = tf.ones([tf.shape(query)[0], query_seq_len], dtype=tf.float32)
         if key_mask is None:
-            key_mask = tf.ones([tf.shape(key)[0], tf.shape(key)[2]], dtype=tf.float32)
+            key_mask = tf.ones([tf.shape(key)[0], key_seq_len], dtype=tf.float32)
 
         query_mask = tf.expand_dims(tf.cast(query_mask, tf.float32), -1)
         key_mask = tf.expand_dims(tf.cast(key_mask, tf.float32), -1)
 
         logits_mask = tf.matmul(query_mask, key_mask, transpose_b=True)  # [batch_size, seq_len_q, seq_len_k]
+
+        if self.look_ahead_mask:
+            look_ahead_mask = self._make_look_ahead_mask([query_seq_len, key_seq_len])
+            logits_mask = logits_mask * look_ahead_mask
+
         if tf.rank(query) == 4:
             logits_mask = tf.expand_dims(logits_mask, 1)  # [batch_size, 1, seq_len_q, seq_len_k]
 
         return logits_mask
+
+    def _make_look_ahead_mask(self, shape):
+        mask = tf.linalg.band_part(tf.ones(shape), -1, 0)
+        return mask
+
+    def get_config(self):
+        config = {"embed_dim": self.embed_dim, "num_heads": self.num_heads,
+                  "dropout_rate": self.dropout_rate, "look_ahead_mask": self.look_ahead_mask}
+        base_config = super(MultiHeadSelfAttention, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))
