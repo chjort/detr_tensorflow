@@ -44,15 +44,17 @@ class TransformerEncoderLayer(tf.keras.layers.Layer):
 
 
 class TransformerDecoderLayer(tf.keras.layers.Layer):
-    def __init__(self, embed_dim, num_heads, ff_dim, dropout_rate=0.1, **kwargs):
+    def __init__(self, embed_dim, num_heads, ff_dim, dropout_rate=0.1, look_ahead_mask=False, **kwargs):
         super(TransformerDecoderLayer, self).__init__(**kwargs)
         self.embed_dim = embed_dim
         self.num_heads = num_heads
         self.ff_dim = ff_dim
         self.dropout_rate = dropout_rate
+        self.look_ahead_mask = look_ahead_mask
         self.supports_masking = True
 
-        self.attn1 = MultiHeadSelfAttention(embed_dim, num_heads, dropout_rate, name="self_attn")
+        self.attn1 = MultiHeadSelfAttention(embed_dim, num_heads, dropout_rate, look_ahead_mask=look_ahead_mask,
+                                            name="self_attn")
         self.dropout1 = tf.keras.layers.Dropout(dropout_rate)
         self.layernorm1 = tf.keras.layers.LayerNormalization(epsilon=1e-5, name="norm1")
 
@@ -87,7 +89,8 @@ class TransformerDecoderLayer(tf.keras.layers.Layer):
 
     def get_config(self):
         config = {"embed_dim": self.embed_dim, "num_heads": self.num_heads,
-                  "ff_dim": self.ff_dim, "dropout_rate": self.dropout_rate}
+                  "ff_dim": self.ff_dim, "dropout_rate": self.dropout_rate,
+                  "look_ahead_mask": self.look_ahead_mask}
         base_config = super(TransformerDecoderLayer, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
 
@@ -129,6 +132,7 @@ class BaseTransformerDecoder(tf.keras.layers.Layer):
             self._norm_layer = None
         self.return_sequence = return_sequence
         self.layers = layers
+        self.supports_masking = True
 
     def call(self, inputs, **kwargs):
         x, enc_output = inputs
@@ -147,9 +151,6 @@ class BaseTransformerDecoder(tf.keras.layers.Layer):
             x = tf.transpose(x, [1, 0, 2, 3])
 
         return x
-
-    def compute_mask(self, inputs, mask=None):
-        return None
 
     def get_config(self):
         config = {"norm": self.norm, "return_sequence": self.return_sequence}
@@ -178,13 +179,14 @@ class TransformerEncoder(BaseTransformerEncoder):
 
 class TransformerDecoder(BaseTransformerDecoder):
     def __init__(self, embed_dim, num_heads, ff_dim, num_layers, dropout_rate=0.1, norm=False,
-                 return_sequence=False, **kwargs):
+                 look_ahead_mask=False, return_sequence=False, **kwargs):
         self.embed_dim = embed_dim
         self.num_heads = num_heads
         self.ff_dim = ff_dim
         self.num_layers = num_layers
         self.dropout_rate = dropout_rate
-        layers = [TransformerDecoderLayer(embed_dim, num_heads, ff_dim, dropout_rate)
+        self.look_ahead_mask = look_ahead_mask
+        layers = [TransformerDecoderLayer(embed_dim, num_heads, ff_dim, dropout_rate, look_ahead_mask)
                   for i in range(num_layers)]
         super(TransformerDecoder, self).__init__(layers=layers, norm=norm, return_sequence=return_sequence, **kwargs)
 
