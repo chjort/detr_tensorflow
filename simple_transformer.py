@@ -81,6 +81,14 @@ class MultiHeadAttention(tf.keras.layers.Layer):
 
         return x
 
+    # def compute_mask(self, inputs, mask=None):
+    #     if mask:
+    #         q_mask = mask[0]
+    #         if q_mask is None:
+    #             return None
+    #         return tf.convert_to_tensor(q_mask)
+    #     return None
+
 
 class EncoderLayer(tf.keras.layers.Layer):
     def __init__(self, d_model=512, num_heads=8, dff=2048, dropout=0.0):
@@ -97,13 +105,13 @@ class EncoderLayer(tf.keras.layers.Layer):
         self.add_dense = tf.keras.layers.Add()
         self.layer_norm_dense = tf.keras.layers.LayerNormalization(epsilon=1e-6)
 
+        self.supports_masking = True
+
     def call(self, inputs, mask=None, training=None):
-        # print(mask)
         attention = self.multi_head_attention([inputs, inputs, inputs], mask=[mask, mask])
         attention = self.dropout_attention(attention, training=training)
         x = self.add_attention([inputs, attention])
         x = self.layer_norm_attention(x)
-        # x = inputs
 
         ## Feed Forward
         dense = self.dense1(x)
@@ -136,7 +144,6 @@ class DecoderLayer(tf.keras.layers.Layer):
         self.layer_norm_dense = tf.keras.layers.LayerNormalization(epsilon=1e-6)
 
     def call(self, inputs, mask=None, training=None):
-        # print(mask)
         attention = self.multi_head_attention1([inputs[0], inputs[0], inputs[0]], mask=[mask[0], mask[0]])
         attention = self.dropout_attention1(attention, training=training)
         x = self.add_attention1([inputs[0], attention])
@@ -156,72 +163,56 @@ class DecoderLayer(tf.keras.layers.Layer):
 
         return x
 
+    def compute_mask(self, inputs, mask=None):
+        if mask:
+            target_mask = mask[0]
+            if target_mask is None:
+                return None
+            return tf.convert_to_tensor(target_mask)
+        return None
+
 
 class Encoder(tf.keras.layers.Layer):
-    def __init__(self, input_vocab_size, num_layers=4, d_model=512, num_heads=8, dff=2048,
-                 maximum_position_encoding=10000, dropout=0.0):
+    def __init__(self, num_layers=4, d_model=512, num_heads=8, dff=2048, dropout=0.0):
         super(Encoder, self).__init__()
-
         self.d_model = d_model
-
-        self.embedding = tf.keras.layers.Embedding(input_vocab_size, d_model, mask_zero=True)
-        self.pos = positional_encoding(maximum_position_encoding, d_model)
-
         self.encoder_layers = [EncoderLayer(d_model=d_model, num_heads=num_heads, dff=dff, dropout=dropout) for _ in
                                range(num_layers)]
-
         self.dropout = tf.keras.layers.Dropout(dropout)
+        self.supports_masking = True
 
     def call(self, inputs, mask=None, training=None):
-        x = self.embedding(inputs)
-        # positional encoding
-        x *= tf.math.sqrt(
-            tf.cast(self.d_model, tf.float32))  # scaling by the sqrt of d_model, not sure why or if needed??
-        x += self.pos[:, :tf.shape(x)[1], :]
-        x = self.dropout(x, training=training)
+        x = self.dropout(inputs, training=training)
 
         # Encoder layer
-        embedding_mask = self.embedding.compute_mask(inputs)
         for encoder_layer in self.encoder_layers:
-            x = encoder_layer(x, mask=embedding_mask)
+            x = encoder_layer(x, mask=mask)
 
         return x
-
-    def compute_mask(self, inputs, mask=None):
-        return self.embedding.compute_mask(inputs)
 
 
 class Decoder(tf.keras.layers.Layer):
-    def __init__(self, target_vocab_size, num_layers=4, d_model=512, num_heads=8, dff=2048,
-                 maximum_position_encoding=10000, dropout=0.0):
+    def __init__(self, num_layers=4, d_model=512, num_heads=8, dff=2048, dropout=0.0):
         super(Decoder, self).__init__()
-
         self.d_model = d_model
-
-        self.embedding = tf.keras.layers.Embedding(target_vocab_size, d_model, mask_zero=True)
-        self.pos = positional_encoding(maximum_position_encoding, d_model)
-
         self.decoder_layers = [DecoderLayer(d_model=d_model, num_heads=num_heads, dff=dff, dropout=dropout) for _ in
                                range(num_layers)]
-
         self.dropout = tf.keras.layers.Dropout(dropout)
 
     def call(self, inputs, mask=None, training=None):
-        x = self.embedding(inputs[0])
-        # positional encoding
-        x *= tf.math.sqrt(
-            tf.cast(self.d_model, tf.float32))  # scaling by the sqrt of d_model, not sure why or if needed??
-        x += self.pos[:, :tf.shape(x)[1], :]
-
+        x, x_enc = inputs
         x = self.dropout(x, training=training)
 
         # Decoder layer
-        embedding_mask = self.embedding.compute_mask(inputs[0])
         for decoder_layer in self.decoder_layers:
-            x = decoder_layer([x, inputs[1]], mask=[embedding_mask, mask])
+            x = decoder_layer([x, x_enc], mask=mask)
 
         return x
 
-    # Comment this out if you want to use the masked_loss()
     def compute_mask(self, inputs, mask=None):
-        return self.embedding.compute_mask(inputs[0])
+        if mask:
+            target_mask = mask[0]
+            if target_mask is None:
+                return None
+            return tf.convert_to_tensor(target_mask)
+        return None
