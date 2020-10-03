@@ -17,7 +17,7 @@ def Seq2SeqTransformer(input_vocab_size, output_vocab_size, embed_dim, num_heads
     x_enc = tf.keras.layers.Embedding(input_vocab_size, embed_dim, mask_zero=True, name="inputs_embed")(inputs)
     x_enc = pos_enc1d(x_enc)
     x = Encoder(num_layers=num_encoder_layers,
-                d_model=embed_dim,
+                embed_dim=embed_dim,
                 num_heads=num_heads,
                 dff=dim_feedforward,
                 dropout=dropout_rate)(x_enc)
@@ -25,7 +25,7 @@ def Seq2SeqTransformer(input_vocab_size, output_vocab_size, embed_dim, num_heads
     x_dec = tf.keras.layers.Embedding(output_vocab_size, embed_dim, mask_zero=True, name="targets_embed")(targets)
     x_dec = pos_enc1d(x_dec)
     x = Decoder(num_layers=num_decoder_layers,
-                d_model=embed_dim,
+                embed_dim=embed_dim,
                 num_heads=num_heads,
                 dff=dim_feedforward,
                 dropout=dropout_rate)([x_dec, x])
