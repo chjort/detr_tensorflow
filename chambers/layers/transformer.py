@@ -68,14 +68,14 @@ class TransformerDecoderLayer(tf.keras.layers.Layer):
         self.dropout4 = tf.keras.layers.Dropout(dropout_rate)
         self.layernorm3 = tf.keras.layers.LayerNormalization(epsilon=1e-5, name="norm3")
 
-    def call(self, inputs, training=None):
+    def call(self, inputs, mask=None, training=None):
         x, enc_output = inputs
 
-        attn_output1 = self.attn1([x, x, x])
+        attn_output1 = self.attn1([x, x, x], mask=mask)
         attn_output1 = self.dropout1(attn_output1, training=training)
         norm_output1 = self.layernorm1(x + attn_output1)
 
-        attn_output2 = self.attn2([norm_output1, enc_output, enc_output])
+        attn_output2 = self.attn2([norm_output1, enc_output, enc_output], mask=mask)
         attn_output2 = self.dropout2(attn_output2, training=training)
         norm_output2 = self.layernorm2(norm_output1 + attn_output2)
 

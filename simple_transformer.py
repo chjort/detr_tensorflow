@@ -1,26 +1,4 @@
-import numpy as np
 import tensorflow as tf
-
-
-def get_angles(pos, i, d_model):
-    angle_rates = 1 / np.power(10000, (2 * (i // 2)) / np.float32(d_model))
-    return pos * angle_rates
-
-
-def positional_encoding(position, d_model):
-    angle_rads = get_angles(np.arange(position)[:, np.newaxis],
-                            np.arange(d_model)[np.newaxis, :],
-                            d_model)
-
-    # apply sin to even indices in the array; 2i
-    angle_rads[:, 0::2] = np.sin(angle_rads[:, 0::2])
-
-    # apply cos to odd indices in the array; 2i+1
-    angle_rads[:, 1::2] = np.cos(angle_rads[:, 1::2])
-
-    pos_encoding = angle_rads[np.newaxis, ...]
-
-    return tf.cast(pos_encoding, dtype=tf.float32)
 
 
 class MultiHeadAttention(tf.keras.layers.Layer):
@@ -31,22 +9,19 @@ class MultiHeadAttention(tf.keras.layers.Layer):
         depth = d_model // num_heads
 
         self.w_query = tf.keras.layers.Dense(d_model)
-        self.split_reshape_query = tf.keras.layers.Reshape((-1, num_heads, depth))
-        self.split_permute_query = tf.keras.layers.Permute((2, 1, 3))
-
         self.w_value = tf.keras.layers.Dense(d_model)
-        self.split_reshape_value = tf.keras.layers.Reshape((-1, num_heads, depth))
-        self.split_permute_value = tf.keras.layers.Permute((2, 1, 3))
-
         self.w_key = tf.keras.layers.Dense(d_model)
-        self.split_reshape_key = tf.keras.layers.Reshape((-1, num_heads, depth))
-        self.split_permute_key = tf.keras.layers.Permute((2, 1, 3))
-
         self.attention = tf.keras.layers.Attention(causal=causal, dropout=dropout)
+        self.projection = tf.keras.layers.Dense(d_model)
+
+        self.split_reshape = tf.keras.layers.Reshape((-1, num_heads, depth))
+        self.split_permute = tf.keras.layers.Permute((2, 1, 3))
+
+        self.split_reshape_mask = tf.keras.layers.Reshape((-1, 1))
+        self.split_permute_mask = tf.keras.layers.Permute((2, 1))
+
         self.join_permute_attention = tf.keras.layers.Permute((2, 1, 3))
         self.join_reshape_attention = tf.keras.layers.Reshape((-1, d_model))
-
-        self.dense = tf.keras.layers.Dense(d_model)
 
     def call(self, inputs, mask=None, training=None):
         q = inputs[0]
@@ -54,40 +29,42 @@ class MultiHeadAttention(tf.keras.layers.Layer):
         k = inputs[2] if len(inputs) > 2 else v
 
         query = self.w_query(q)
-        query = self.split_reshape_query(query)
-        query = self.split_permute_query(query)
+        query = self.split_reshape(query)
+        query = self.split_permute(query)
 
         value = self.w_value(v)
-        value = self.split_reshape_value(value)
-        value = self.split_permute_value(value)
+        value = self.split_reshape(value)
+        value = self.split_permute(value)
 
         key = self.w_key(k)
-        key = self.split_reshape_key(key)
-        key = self.split_permute_key(key)
+        key = self.split_reshape(key)
+        key = self.split_permute(key)
 
         if mask is not None:
             if mask[0] is not None:
-                mask[0] = tf.keras.layers.Reshape((-1, 1))(mask[0])
-                mask[0] = tf.keras.layers.Permute((2, 1))(mask[0])
+                q_mask = mask[0]
+                q_mask = self.split_reshape_mask(q_mask)
+                q_mask = self.split_permute_mask(q_mask)
             if mask[1] is not None:
-                mask[1] = tf.keras.layers.Reshape((-1, 1))(mask[1])
-                mask[1] = tf.keras.layers.Permute((2, 1))(mask[1])
+                key_mask = mask[1]
+                key_mask = self.split_reshape_mask(key_mask)
+                key_mask = self.split_permute_mask(key_mask)
 
-        attention = self.attention([query, value, key], mask=mask)
+        attention = self.attention([query, value, key], mask=[q_mask, key_mask])
         attention = self.join_permute_attention(attention)
         attention = self.join_reshape_attention(attention)
 
-        x = self.dense(attention)
+        x = self.projection(attention)
 
         return x
 
-    # def compute_mask(self, inputs, mask=None):
-    #     if mask:
-    #         q_mask = mask[0]
-    #         if q_mask is None:
-    #             return None
-    #         return tf.convert_to_tensor(q_mask)
-    #     return None
+    def compute_mask(self, inputs, mask=None):
+        if mask:
+            q_mask = mask[0]
+            if q_mask is None:
+                return None
+            return tf.convert_to_tensor(q_mask)
+        return None
 
 
 class EncoderLayer(tf.keras.layers.Layer):
@@ -144,12 +121,14 @@ class DecoderLayer(tf.keras.layers.Layer):
         self.layer_norm_dense = tf.keras.layers.LayerNormalization(epsilon=1e-6)
 
     def call(self, inputs, mask=None, training=None):
-        attention = self.multi_head_attention1([inputs[0], inputs[0], inputs[0]], mask=[mask[0], mask[0]])
+        x, x_enc = inputs
+
+        attention = self.multi_head_attention1([x, x, x], mask=[mask[0], mask[0]])
         attention = self.dropout_attention1(attention, training=training)
-        x = self.add_attention1([inputs[0], attention])
+        x = self.add_attention1([x, attention])
         x = self.layer_norm_attention1(x)
 
-        attention = self.multi_head_attention2([x, inputs[1], inputs[1]], mask=[mask[0], mask[1]])
+        attention = self.multi_head_attention2([x, x_enc, x_enc], mask=[mask[0], mask[1]])
         attention = self.dropout_attention2(attention, training=training)
         x = self.add_attention2([x, attention])
         x = self.layer_norm_attention1(x)
