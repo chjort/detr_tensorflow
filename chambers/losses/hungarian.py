@@ -19,7 +19,7 @@ class HungarianLoss(tf.keras.losses.Loss):
 
     def __init__(self, n_classes, loss_weights=None, lsa_loss_weights=None, no_class_weight=0.1, mask_value=None,
                  sequence_input=False, sum_losses=True, name="hungarian_loss", **kwargs):
-        self.weighted_cross_entropy_loss = WeightedSparseCategoricalCrossEntropyCocoDETR(
+        self.weighted_cross_entropy_loss = WeightedSparseCategoricalCrossEntropyDETR(
             n_classes=n_classes, no_class_weight=no_class_weight, reduction=tf.keras.losses.Reduction.NONE)
         self.l1_loss = L1Loss(reduction=tf.keras.losses.Reduction.NONE)
         self.giou_loss = GIoULoss(reduction=tf.keras.losses.Reduction.NONE)
@@ -170,7 +170,7 @@ class HungarianLoss(tf.keras.losses.Loss):
         return dict(list(base_config.items()) + list(config.items()))
 
 
-class WeightedSparseCategoricalCrossEntropyCocoDETR(tf.keras.losses.Loss):
+class WeightedSparseCategoricalCrossEntropyDETR(tf.keras.losses.Loss):
     def __init__(self, n_classes, no_class_weight=0.1, reduction=tf.keras.losses.Reduction.AUTO,
                  name="weighted_sparse_categorical_cross_entropy"):
         super().__init__(reduction=reduction, name=name)
@@ -194,7 +194,7 @@ class WeightedSparseCategoricalCrossEntropyCocoDETR(tf.keras.losses.Loss):
 
     def get_config(self):
         config = {"n_classes": self.n_classes, "no_class_weight": self.no_class_weight}
-        base_config = super(WeightedSparseCategoricalCrossEntropyCocoDETR, self).get_config()
+        base_config = super(WeightedSparseCategoricalCrossEntropyDETR, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
 
 
