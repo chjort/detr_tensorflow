@@ -183,16 +183,24 @@ def DETR(input_shape, n_classes, n_object_queries, embed_dim, num_heads, dim_fee
         set_supports_masking(backbone, verbose=False)
         proj.supports_masking = True
 
-    pos_enc = PositionalEmbedding2D(embed_dim, normalize=True, add_to_input=False)(x_enc)
-    pos_enc = tf.keras.layers.Reshape([-1, embed_dim], name="positional_embedding_sequence")(
-        pos_enc)  # (batch_size, h*w, embed_dim)
-    x_enc = ReshapeWithMask([-1, embed_dim], [-1], name="image_features_sequence")(
-        x_enc)  # (batch_size, h*w, embed_dim)
+    pos_enc = PositionalEmbedding2D(embed_dim, normalize=True, add_to_input=False, name="pos_enc")(x_enc)
+    pos_enc = tf.keras.layers.Reshape([-1, embed_dim], name="pos_enc_sequence")(pos_enc)  # (batch_size, h*w, embed_dim)
+    x_enc = ReshapeWithMask([-1, embed_dim], [-1], name="img_features_sequence")(x_enc)  # (batch_size, h*w, embed_dim)
 
-    enc_output = EncoderDETR(embed_dim, num_heads, dim_feedforward, num_encoder_layers, dropout_rate,
+    enc_output = EncoderDETR(embed_dim,
+                             num_heads,
+                             dim_feedforward,
+                             num_encoder_layers,
+                             dropout_rate,
                              norm=False)([x_enc, pos_enc])
-    x = DecoderDETR(n_object_queries, embed_dim, num_heads, dim_feedforward, num_decoder_layers,
-                    dropout_rate, norm=True, return_sequence=return_decode_sequence)([pos_enc, enc_output])
+    x = DecoderDETR(n_object_queries,
+                    embed_dim,
+                    num_heads,
+                    dim_feedforward,
+                    num_decoder_layers,
+                    dropout_rate,
+                    norm=True,
+                    return_sequence=return_decode_sequence)([pos_enc, enc_output])
 
     n_classes = n_classes + 1  # Add 1 for the "Nothing" class
     x_class = tf.keras.layers.Dense(n_classes, name="class_embed")(x)
