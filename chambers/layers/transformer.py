@@ -225,3 +225,11 @@ class Decoder(BaseDecoder):
                   "num_layers": self.num_layers, "causal": self.causal}
         base_config = super(Decoder, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
+
+
+tf.keras.utils.get_custom_objects().update({
+    "EncoderLayer": EncoderLayer,
+    "DecoderLayer": DecoderLayer,
+    "Encoder": Encoder,
+    "Decoder": Decoder
+})

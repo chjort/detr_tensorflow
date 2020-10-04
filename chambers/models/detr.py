@@ -1,5 +1,6 @@
 import tensorflow
 import tensorflow as tf
+from tensorflow_addons.optimizers import AdamW
 
 from chambers.layers.embedding import PositionalEmbedding2D
 from chambers.layers.masking import DownsampleMasking, ReshapeWithMask
@@ -183,7 +184,7 @@ def DETR(input_shape, n_classes, n_object_queries, embed_dim, num_heads, dim_fee
         proj.supports_masking = True
 
     pos_enc = PositionalEmbedding2D(embed_dim, normalize=True, add_to_input=False)(x_enc)
-    pos_enc = tf.keras.layers.Reshape([-1, embed_dim], name="positional_encoding_sequence")(
+    pos_enc = tf.keras.layers.Reshape([-1, embed_dim], name="positional_embedding_sequence")(
         pos_enc)  # (batch_size, h*w, embed_dim)
     x_enc = ReshapeWithMask([-1, embed_dim], [-1], name="image_features_sequence")(
         x_enc)  # (batch_size, h*w, embed_dim)
@@ -211,7 +212,6 @@ def DETR(input_shape, n_classes, n_object_queries, embed_dim, num_heads, dim_fee
 
 def load_detr(path, compile=True):
     if path.endswith(".h5") or path.endswith(".hdf5"):
-        from tensorflow_addons.optimizers import AdamW
         from chambers.layers.masking import ReshapeWithMask, DownsampleMasking
         from chambers.layers.embedding import PositionalEmbedding2D
         from chambers.optimizers import LearningRateMultiplier
@@ -221,8 +221,8 @@ def load_detr(path, compile=True):
                                               "DownsampleMasking": DownsampleMasking,
                                               "PositionalEmbedding2D": PositionalEmbedding2D,
                                               "ReshapeWithMask": ReshapeWithMask,
-                                              "TransformerEncoderDETR": EncoderDETR,
-                                              "TransformerDecoderDETR": DecoderDETR,
+                                              "EncoderDETR": EncoderDETR,
+                                              "DecoderDETR": DecoderDETR,
                                               "LearningRateMultiplier": LearningRateMultiplier,
                                               "Addons>AdamW": AdamW,
                                               "HungarianLoss": HungarianLoss
@@ -261,36 +261,10 @@ def post_process(y_pred, min_prob=None):
     return boxes, labels, probs
 
 
-# %%
-num_classes = 91
-embed_dim = 256
-n_object_queries_ = 100
-batch_size = 2
-input_shape = (896, 1216, 3)
-# input_shape = (None, None, 3)
-return_sequence = False
-
-model = DETR(input_shape=input_shape,
-             n_classes=num_classes,
-             n_object_queries=n_object_queries_,
-             embed_dim=embed_dim,
-             num_heads=8,
-             dim_feedforward=2048,
-             num_encoder_layers=6,
-             num_decoder_layers=6,
-             dropout_rate=0.1,
-             return_decode_sequence=return_sequence,
-             mask_value=-1.
-             )
-model.summary()
-
-# %%
-import numpy as np
-
-x1 = np.random.normal(size=(batch_size, 544, 896, 3))
-x1 = np.pad(x1, [(0, 0), (0, 352), (0, 320), (0, 0)], mode="constant", constant_values=-1.)
-print(x1.shape)
-
-z = model(x1)
-print(z.shape)
-# print(z._keras_mask.shape)
+tf.keras.utils.get_custom_objects().update({
+    "EncoderLayerDETR": EncoderLayerDETR,
+    "DecoderLayerDETR": DecoderLayerDETR,
+    "EncoderDETR": EncoderDETR,
+    "DecoderDETR": DecoderDETR,
+    "Addons>AdamW": AdamW,
+})

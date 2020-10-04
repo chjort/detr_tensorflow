@@ -60,3 +60,9 @@ class ReshapeWithMask(tf.keras.layers.Reshape):
         config = {'target_mask_shape': self.target_mask_shape}
         base_config = super(ReshapeWithMask, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
+
+
+tf.keras.utils.get_custom_objects().update({
+    "DownsampleMasking": DownsampleMasking,
+    "ReshapeWithMask": ReshapeWithMask
+})

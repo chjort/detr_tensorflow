@@ -88,3 +88,8 @@ class MultiHeadAttention(tf.keras.layers.Layer):
                   "dropout_rate": self.dropout_rate, "causal": self.causal}
         base_config = super(MultiHeadAttention, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
+
+
+tf.keras.utils.get_custom_objects().update({
+    "MultiHeadAttention": MultiHeadAttention
+})

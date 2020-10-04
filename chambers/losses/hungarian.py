@@ -248,3 +248,8 @@ def pairwise_sparse_softmax(y_true, y_pred):
     y_pred = tf.nn.softmax(y_pred, axis=-1)
     cost_softmax = -tf.vectorized_map(gather, (y_pred, y_true))
     return cost_softmax
+
+
+tf.keras.utils.get_custom_objects().update({
+    "HungarianLoss": HungarianLoss,
+})
