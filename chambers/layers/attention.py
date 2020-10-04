@@ -11,7 +11,7 @@ class MultiHeadAttention(tf.keras.layers.Layer):
         self.causal = causal
 
         assert embed_dim % num_heads == 0
-        depth = embed_dim // num_heads
+        head_dim = embed_dim // num_heads
 
         self.w_query = tf.keras.layers.Dense(embed_dim)
         self.w_value = tf.keras.layers.Dense(embed_dim)
@@ -19,7 +19,7 @@ class MultiHeadAttention(tf.keras.layers.Layer):
         self.attention = Attention(causal=causal, dropout=dropout_rate)
         self.projection = tf.keras.layers.Dense(embed_dim)
 
-        self.reshape = tf.keras.layers.Reshape((-1, num_heads, depth))
+        self.reshape = tf.keras.layers.Reshape((-1, num_heads, head_dim))
         self.permute = tf.keras.layers.Permute((2, 1, 3))
 
         self.reshape_mask = tf.keras.layers.Reshape((-1, 1))
@@ -34,16 +34,16 @@ class MultiHeadAttention(tf.keras.layers.Layer):
         k = inputs[2] if len(inputs) > 2 else v  # [batch_size, tv, embed_dim]
 
         query = self.w_query(q)
-        query = self.reshape(query)  # [batch_size, tq, num_heads, embed_dim]
-        query = self.permute(query)  # [batch_size, num_heads, tq, embed_dim]
+        query = self.reshape(query)  # [batch_size, tq, num_heads, head_dim]
+        query = self.permute(query)  # [batch_size, num_heads, tq, head_dim]
 
         value = self.w_value(v)
-        value = self.reshape(value)  # [batch_size, tv, num_heads, embed_dim]
-        value = self.permute(value)  # [batch_size, num_heads, tv, embed_dim]
+        value = self.reshape(value)  # [batch_size, tv, num_heads, head_dim]
+        value = self.permute(value)  # [batch_size, num_heads, tv, head_dim]
 
         key = self.w_key(k)
-        key = self.reshape(key)  # [batch_size, tk, num_heads, embed_dim]
-        key = self.permute(key)  # [batch_size, num_heads, tv, embed_dim]
+        key = self.reshape(key)  # [batch_size, tk, num_heads, head_dim]
+        key = self.permute(key)  # [batch_size, num_heads, tv, head_dim]
 
         if mask is not None:
             if mask[0] is not None:
@@ -58,17 +58,16 @@ class MultiHeadAttention(tf.keras.layers.Layer):
                 value_mask = self.reshape_mask(value_mask)  # [batch_size, tv, num_heads]
                 value_mask = self.permute_mask(value_mask)  # [batch_size, num_heads, tv]
             else:
-                value = None
+                value_mask = None
 
         else:
             query_mask = None
             value_mask = None
 
-        attention = self.attention([query, value, key], mask=[query_mask, value_mask])
-        attention = self.permute_attention(attention)
-        attention = self.reshape_attention(attention)
-
-        x = self.projection(attention)
+        attention = self.attention([query, value, key], mask=[query_mask, value_mask])  # [batch_size, num_heads, tq, head_dim]
+        attention = self.permute_attention(attention)  # [batch_size, tq, num_heads, head_dim]
+        attention = self.reshape_attention(attention)  # [batch_size, tq, embed_dim]
+        x = self.projection(attention)  # [batch_size, tq, embed_dim]
 
         return x
 
