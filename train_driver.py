@@ -14,7 +14,21 @@ from data.tf_datasets import load_coco_tf, CLASSES_TF
 # model_path = "outputs/2020-10-04_19-19-45/checkpoints/model-init.h5"
 model_path = None
 
+
+def loss_placeholder(y_true, y_pred):
+    y_true_labels = y_true[..., -1]  # [1]
+    y_pred_logits = y_pred[..., 4:]  # [1]
+
+    y_pred = y_pred_logits[:, -1, :1]
+    y_true = y_true_labels[:, :1]
+
+    return tf.keras.losses.sparse_categorical_crossentropy(y_true, y_pred, from_logits=True)
+
 # %% strategy
+# Using 8 GPU will give "WARNING:tensorflow:Large unrolled loop detected"
+#   at tensorflow/python/autograph/operators/control_flow.py, line 817, in _verify_inefficient_unroll
+#   This warning should simply be ignored.
+
 strategy = tf.distribute.MirroredStrategy(devices=["/gpu:0", "/gpu:1", "/gpu:2", "/gpu:3",
                                                    "/gpu:4", "/gpu:5", "/gpu:6",
                                                    "/gpu:7"
@@ -99,9 +113,9 @@ detr.summary()
 
 # set training configuration
 print("\n### TRAINING ###")
-EPOCHS = 10  # 150
-n_train = 200
-n_val = 100
+EPOCHS = 50  # 150
+# n_train = 416
+# n_val = 416
 STEPS_PER_EPOCH = n_train // GLOBAL_BATCH_SIZE
 VAL_STEPS_PER_EPOCH = n_val // GLOBAL_BATCH_SIZE
 
@@ -144,7 +158,7 @@ callbacks = [
                                        monitor="val_loss",
                                        save_best_only=False,
                                        save_weights_only=False
-                                       ),
+                                       )
 ]
 
 # fit
@@ -160,4 +174,38 @@ history = detr.fit(train_dataset,
 """ TODO:
 * Test model on 8 GPUs
     * Set EPOCHS = 150
+"""
+
+""" 4 GPU (bs 416, decode_sequence=True)
+26/26 [==============================] - 97s 4s/step - loss: 86.8079
+Epoch 2/10
+26/26 [==============================] - 27s 1s/step - loss: 52.3061
+Epoch 3/10
+26/26 [==============================] - 28s 1s/step - loss: 48.4626
+Epoch 4/10
+26/26 [==============================] - 28s 1s/step - loss: 46.8509
+Epoch 5/10
+26/26 [==============================] - 28s 1s/step - loss: 44.9585
+
+8 GPU (bs 416, decode_sequence=True)
+13/13 [==============================] - 171s 13s/step - loss: 99.2107
+Epoch 2/10
+13/13 [==============================] - 21s 2s/step - loss: 57.3480
+Epoch 3/10
+13/13 [==============================] - 22s 2s/step - loss: 52.3514
+Epoch 4/10
+13/13 [==============================] - 21s 2s/step - loss: 50.0755
+Epoch 5/10
+13/13 [==============================] - 23s 2s/step - loss: 49.0004
+
+8 GPU (bs 416, decode_sequence=False)
+13/13 [==============================] - 157s 12s/step - loss: 21.0014
+Epoch 2/10
+13/13 [==============================] - 11s 876ms/step - loss: 9.3689
+Epoch 3/10
+13/13 [==============================] - 11s 851ms/step - loss: 8.2976
+Epoch 4/10
+13/13 [==============================] - 11s 877ms/step - loss: 8.0504
+Epoch 5/10
+13/13 [==============================] - 13s 964ms/step - loss: 7.9375
 """
