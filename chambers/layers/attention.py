@@ -17,7 +17,7 @@ class MultiHeadAttention(tf.keras.layers.Layer):
         self.w_value = tf.keras.layers.Dense(embed_dim)
         self.w_key = tf.keras.layers.Dense(embed_dim)
         self.attention = Attention(causal=causal, dropout=dropout_rate)
-        self.projection = tf.keras.layers.Dense(embed_dim)
+        self.w_projection = tf.keras.layers.Dense(embed_dim)
 
         self.reshape = tf.keras.layers.Reshape((-1, num_heads, head_dim))
         self.permute = tf.keras.layers.Permute((2, 1, 3))
@@ -25,7 +25,6 @@ class MultiHeadAttention(tf.keras.layers.Layer):
         self.reshape_mask = tf.keras.layers.Reshape((-1, 1))
         self.permute_mask = tf.keras.layers.Permute((2, 1))
 
-        self.permute_attention = tf.keras.layers.Permute((2, 1, 3))
         self.reshape_attention = tf.keras.layers.Reshape((-1, embed_dim))
 
     def call(self, inputs, mask=None, training=None):
@@ -33,42 +32,50 @@ class MultiHeadAttention(tf.keras.layers.Layer):
         v = inputs[1]  # [batch_size, tv, embed_dim]
         k = inputs[2] if len(inputs) > 2 else v  # [batch_size, tv, embed_dim]
 
-        query = self.w_query(q)
-        query = self.reshape(query)  # [batch_size, tq, num_heads, head_dim]
-        query = self.permute(query)  # [batch_size, num_heads, tq, head_dim]
+        query = self.w_query(q)  # [batch_size, tq, embed_dim]
+        query = self.separate_heads(query)  # [batch_size, num_heads, tq, head_dim]
 
-        value = self.w_value(v)
-        value = self.reshape(value)  # [batch_size, tv, num_heads, head_dim]
-        value = self.permute(value)  # [batch_size, num_heads, tv, head_dim]
+        value = self.w_value(v)  # [batch_size, tv, embed_dim]
+        value = self.separate_heads(value)  # [batch_size, num_heads, tv, head_dim]
 
-        key = self.w_key(k)
-        key = self.reshape(key)  # [batch_size, tk, num_heads, head_dim]
-        key = self.permute(key)  # [batch_size, num_heads, tv, head_dim]
+        key = self.w_key(k)  # [batch_size, tv, embed_dim]
+        key = self.separate_heads(key)  # [batch_size, num_heads, tv, head_dim]
 
         if mask is not None:
-            if mask[0] is not None:
-                query_mask = mask[0]  # [batch_size, tq]
-                query_mask = self.reshape_mask(query_mask)  # [batch_size, tq, num_heads]
-                query_mask = self.permute_mask(query_mask)  # [batch_size, num_heads, tq]
-            else:
-                query_mask = None
+            mask = self.separate_heads_mask(mask)
 
-            if mask[1] is not None:
-                value_mask = mask[1]  # [batch_size, tv]
-                value_mask = self.reshape_mask(value_mask)  # [batch_size, tv, num_heads]
-                value_mask = self.permute_mask(value_mask)  # [batch_size, num_heads, tv]
-            else:
-                value_mask = None
+        attention = self.attention([query, value, key], mask=mask)  # [batch_size, num_heads, tq, head_dim]
+        attention = self.merge_heads(attention)  # [batch_size, tq, embed_dim]
 
+        x = self.w_projection(attention)  # [batch_size, tq, embed_dim]
+
+        return x
+
+    def separate_heads(self, x):
+        x = self.reshape(x)  # [batch_size, t, num_heads, head_dim]
+        x = self.permute(x)  # [batch_size, num_heads, t, head_dim]
+        return x
+
+    def separate_heads_mask(self, mask):
+        if mask[0] is not None:
+            query_mask = mask[0]  # [batch_size, tq]
+            query_mask = self.reshape_mask(query_mask)  # [batch_size, tq, num_heads]
+            query_mask = self.permute_mask(query_mask)  # [batch_size, num_heads, tq]
         else:
             query_mask = None
+
+        if mask[1] is not None:
+            value_mask = mask[1]  # [batch_size, tv]
+            value_mask = self.reshape_mask(value_mask)  # [batch_size, tv, num_heads]
+            value_mask = self.permute_mask(value_mask)  # [batch_size, num_heads, tv]
+        else:
             value_mask = None
 
-        attention = self.attention([query, value, key], mask=[query_mask, value_mask])  # [batch_size, num_heads, tq, head_dim]
-        attention = self.permute_attention(attention)  # [batch_size, tq, num_heads, head_dim]
-        attention = self.reshape_attention(attention)  # [batch_size, tq, embed_dim]
-        x = self.projection(attention)  # [batch_size, tq, embed_dim]
+        return [query_mask, value_mask]
 
+    def merge_heads(self, x):
+        x = self.permute(x)  # [batch_size, t, num_heads, head_dim]
+        x = self.reshape_attention(x)
         return x
 
     def compute_mask(self, inputs, mask=None):
