@@ -1,21 +1,33 @@
 import tensorflow as tf
 
-from chambers.layers.transformer import TransformerEncoder, TransformerDecoder
+from chambers.layers.embedding import PositionalEmbedding1D
+from chambers.layers.transformer import Encoder, Decoder
 
 
-def Transformer(input_shape, num_heads, dim_feedforward,
-                num_encoder_layers, num_decoder_layers,
-                dropout_rate=0.1, return_decode_sequence=False, name="transformer"):
-    x_enc_shape, x_dec_shape = input_shape
-    x_enc = tf.keras.layers.Input(shape=x_enc_shape, name="encoder_input")
-    x_dec = tf.keras.layers.Input(shape=x_dec_shape, name="decoder_input")
+def Seq2SeqTransformer(input_vocab_size, output_vocab_size, embed_dim, num_heads, dim_feedforward,
+                       num_encoder_layers, num_decoder_layers, dropout_rate=0.1, name="seq2seq_transformer"):
+    inputs = tf.keras.layers.Input(shape=(None,), name="inputs_tokens")
+    targets = tf.keras.layers.Input(shape=(None,), name="targets_tokens")
 
-    embed_dim = x_enc_shape[1]
+    x_enc = tf.keras.layers.Embedding(input_vocab_size, embed_dim, mask_zero=True, name="inputs_embed")(inputs)
+    x_enc = PositionalEmbedding1D(embed_dim, name="inputs_positional_encoding")(x_enc)
+    x = Encoder(embed_dim=embed_dim,
+                num_heads=num_heads,
+                ff_dim=dim_feedforward,
+                num_layers=num_encoder_layers,
+                dropout_rate=dropout_rate)(x_enc)
 
-    x = TransformerEncoder(embed_dim, num_heads, dim_feedforward, num_encoder_layers, dropout_rate, norm=False)(x_enc)
-    x = TransformerDecoder(embed_dim, num_heads, dim_feedforward, num_decoder_layers, dropout_rate, norm=True,
-                           return_sequence=return_decode_sequence)([x_dec, x])
+    x_dec = tf.keras.layers.Embedding(output_vocab_size, embed_dim, mask_zero=True, name="targets_embed")(targets)
+    x_dec = PositionalEmbedding1D(embed_dim, name="targets_positional_encoding")(x_dec)
+    x = Decoder(embed_dim=embed_dim,
+                num_heads=num_heads,
+                ff_dim=dim_feedforward,
+                num_layers=num_decoder_layers,
+                dropout_rate=dropout_rate,
+                norm=False,
+                causal=True)([x_dec, x])
 
-    model = tf.keras.models.Model([x_enc, x_dec], x, name=name)
+    x = tf.keras.layers.Dense(output_vocab_size)(x)
 
+    model = tf.keras.models.Model(inputs=[inputs, targets], outputs=x, name=name)
     return model
