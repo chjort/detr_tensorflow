@@ -12,23 +12,23 @@ def Seq2SeqTransformer(input_vocab_size, output_vocab_size, embed_dim, num_heads
     inputs = tf.keras.layers.Input(shape=(None,), name="inputs_tokens")
     targets = tf.keras.layers.Input(shape=(None,), name="targets_tokens")
 
-    pos_enc1d = PositionalEmbedding1D(embed_dim)
-
     x_enc = tf.keras.layers.Embedding(input_vocab_size, embed_dim, mask_zero=True, name="inputs_embed")(inputs)
-    x_enc = pos_enc1d(x_enc)
-    x = Encoder(num_layers=num_encoder_layers,
-                embed_dim=embed_dim,
+    x_enc = PositionalEmbedding1D(embed_dim, name="inputs_positional_encoding")(x_enc)
+    x = Encoder(embed_dim=embed_dim,
                 num_heads=num_heads,
-                dff=dim_feedforward,
-                dropout=dropout_rate)(x_enc)
+                ff_dim=dim_feedforward,
+                num_layers=num_encoder_layers,
+                dropout_rate=dropout_rate)(x_enc)
 
     x_dec = tf.keras.layers.Embedding(output_vocab_size, embed_dim, mask_zero=True, name="targets_embed")(targets)
-    x_dec = pos_enc1d(x_dec)
-    x = Decoder(num_layers=num_decoder_layers,
-                embed_dim=embed_dim,
+    x_dec = PositionalEmbedding1D(embed_dim, name="targets_positional_encoding")(x_dec)
+    x = Decoder(embed_dim=embed_dim,
                 num_heads=num_heads,
-                dff=dim_feedforward,
-                dropout=dropout_rate)([x_dec, x])
+                ff_dim=dim_feedforward,
+                num_layers=num_decoder_layers,
+                dropout_rate=dropout_rate,
+                norm=False,
+                causal=True)([x_dec, x])
 
     x = tf.keras.layers.Dense(output_vocab_size)(x)
 
