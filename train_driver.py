@@ -11,18 +11,19 @@ from chambers.optimizers import LearningRateMultiplier
 from chambers.utils.utils import timestamp_now
 from data.tf_datasets import load_coco_tf, CLASSES_TF
 
+
+# def loss_placeholder(y_true, y_pred):
+#     y_true_labels = y_true[..., -1]  # [1]
+#     y_pred_logits = y_pred[..., 4:]  # [1]
+#
+#     y_pred = y_pred_logits[:, -1, :1]
+#     y_true = y_true_labels[:, :1]
+#
+#     return tf.keras.losses.sparse_categorical_crossentropy(y_true, y_pred, from_logits=True)
+
+
 # model_path = "outputs/2020-10-04_19-19-45/checkpoints/model-init.h5"
 model_path = None
-
-
-def loss_placeholder(y_true, y_pred):
-    y_true_labels = y_true[..., -1]  # [1]
-    y_pred_logits = y_pred[..., 4:]  # [1]
-
-    y_pred = y_pred_logits[:, -1, :1]
-    y_true = y_true_labels[:, :1]
-
-    return tf.keras.losses.sparse_categorical_crossentropy(y_true, y_pred, from_logits=True)
 
 # %% strategy
 # Using 8 GPU will give "WARNING:tensorflow:Large unrolled loop detected"
