@@ -204,7 +204,6 @@ def DETR(input_shape, n_classes, n_object_queries, embed_dim, num_heads, dim_fee
 
     x = tf.keras.layers.Concatenate(axis=-1)([x_class, x_box])
 
-    # x = enc_output
     model = tf.keras.models.Model(inputs, x, name=name)
 
     return model
