@@ -1,198 +1,227 @@
 import tensorflow as tf
 
-from .attention import MultiHeadSelfAttention
+from chambers.layers.attention import MultiHeadAttention
 
 
-class TransformerEncoderLayer(tf.keras.layers.Layer):
-    def __init__(self, embed_dim, num_heads, ff_dim, dropout_rate=0.1, **kwargs):
-        super(TransformerEncoderLayer, self).__init__(**kwargs)
+class EncoderLayer(tf.keras.layers.Layer):
+    def __init__(self, embed_dim=512, num_heads=8, ff_dim=2048, dropout_rate=0.1):
+        super(EncoderLayer, self).__init__()
         self.embed_dim = embed_dim
         self.num_heads = num_heads
         self.ff_dim = ff_dim
         self.dropout_rate = dropout_rate
+
+        self.multi_head_attention = MultiHeadAttention(embed_dim, num_heads, dropout_rate)
+        self.dropout_attention = tf.keras.layers.Dropout(dropout_rate)
+        self.add_attention = tf.keras.layers.Add()
+        self.layer_norm_attention = tf.keras.layers.LayerNormalization(epsilon=1e-6)
+
+        self.dense1 = tf.keras.layers.Dense(ff_dim, activation='relu')
+        self.dense2 = tf.keras.layers.Dense(embed_dim)
+        self.dropout_dense = tf.keras.layers.Dropout(dropout_rate)
+        self.add_dense = tf.keras.layers.Add()
+        self.layer_norm_dense = tf.keras.layers.LayerNormalization(epsilon=1e-6)
+
         self.supports_masking = True
 
-        self.att = MultiHeadSelfAttention(embed_dim, num_heads, dropout_rate, name="self_attn")
-        self.dropout = tf.keras.layers.Dropout(dropout_rate)
-        self.layernorm1 = tf.keras.layers.LayerNormalization(epsilon=1e-5, name="norm1")
+    def call(self, inputs, mask=None, training=None):
+        attention = self.multi_head_attention([inputs, inputs, inputs], mask=[mask, mask])
+        attention = self.dropout_attention(attention, training=training)
+        x = self.add_attention([inputs, attention])
+        x = self.layer_norm_attention(x)
 
-        self.linear1 = tf.keras.layers.Dense(ff_dim, activation="relu", name="linear1")
-        self.dropout1 = tf.keras.layers.Dropout(dropout_rate)
-        self.linear2 = tf.keras.layers.Dense(embed_dim, name="linear2")
-        self.dropout2 = tf.keras.layers.Dropout(dropout_rate)
-        self.layernorm2 = tf.keras.layers.LayerNormalization(epsilon=1e-5, name="norm2")
+        # Feed Forward
+        dense = self.dense1(x)
+        dense = self.dense2(dense)
+        dense = self.dropout_dense(dense, training=training)
+        x = self.add_dense([x, dense])
+        x = self.layer_norm_dense(x)
 
-    def call(self, inputs, training=None):
-        # inputs.shape = [batch_size, sequence_length, embed_dim]
-        attn_output = self.att([inputs, inputs, inputs])
-        attn_output = self.dropout(attn_output, training=training)
-        norm_output1 = self.layernorm1(inputs + attn_output)
-
-        ffn_output = self.linear1(norm_output1)
-        ffn_output = self.dropout1(ffn_output, training=training)
-        ffn_output = self.linear2(ffn_output)
-        ffn_output = self.dropout2(ffn_output, training=training)
-        norm_output2 = self.layernorm2(norm_output1 + ffn_output)
-
-        return norm_output2
+        return x
 
     def get_config(self):
         config = {"embed_dim": self.embed_dim, "num_heads": self.num_heads,
                   "ff_dim": self.ff_dim, "dropout_rate": self.dropout_rate}
-        base_config = super(TransformerEncoderLayer, self).get_config()
+        base_config = super(EncoderLayer, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
 
 
-class TransformerDecoderLayer(tf.keras.layers.Layer):
-    def __init__(self, embed_dim, num_heads, ff_dim, dropout_rate=0.1, look_ahead_mask=False, **kwargs):
-        super(TransformerDecoderLayer, self).__init__(**kwargs)
+class DecoderLayer(tf.keras.layers.Layer):
+    def __init__(self, embed_dim=512, num_heads=8, ff_dim=2048, dropout_rate=0.1, causal=True):
+        super(DecoderLayer, self).__init__()
         self.embed_dim = embed_dim
         self.num_heads = num_heads
         self.ff_dim = ff_dim
         self.dropout_rate = dropout_rate
-        self.look_ahead_mask = look_ahead_mask
-        self.supports_masking = True
+        self.causal = causal
 
-        self.attn1 = MultiHeadSelfAttention(embed_dim, num_heads, dropout_rate, look_ahead_mask=look_ahead_mask,
-                                            name="self_attn")
-        self.dropout1 = tf.keras.layers.Dropout(dropout_rate)
-        self.layernorm1 = tf.keras.layers.LayerNormalization(epsilon=1e-5, name="norm1")
+        self.multi_head_attention1 = MultiHeadAttention(embed_dim, num_heads, dropout_rate, causal=causal)
+        self.dropout_attention1 = tf.keras.layers.Dropout(dropout_rate)
+        self.add_attention1 = tf.keras.layers.Add()
+        self.layer_norm_attention1 = tf.keras.layers.LayerNormalization(epsilon=1e-6)
 
-        self.attn2 = MultiHeadSelfAttention(embed_dim, num_heads, dropout_rate, name="multihead_attn")
-        self.dropout2 = tf.keras.layers.Dropout(dropout_rate)
-        self.layernorm2 = tf.keras.layers.LayerNormalization(epsilon=1e-5, name="norm2")
+        self.multi_head_attention2 = MultiHeadAttention(embed_dim, num_heads, dropout_rate)
+        self.dropout_attention2 = tf.keras.layers.Dropout(dropout_rate)
+        self.add_attention2 = tf.keras.layers.Add()
+        self.layer_norm_attention2 = tf.keras.layers.LayerNormalization(epsilon=1e-6)
 
-        self.linear1 = tf.keras.layers.Dense(ff_dim, activation="relu", name="linear1")
-        self.dropout3 = tf.keras.layers.Dropout(dropout_rate)
-        self.linear2 = tf.keras.layers.Dense(embed_dim, name="linear2")
-        self.dropout4 = tf.keras.layers.Dropout(dropout_rate)
-        self.layernorm3 = tf.keras.layers.LayerNormalization(epsilon=1e-5, name="norm3")
+        self.dense1 = tf.keras.layers.Dense(ff_dim, activation='relu')
+        self.dense2 = tf.keras.layers.Dense(embed_dim)
+        self.dropout_dense = tf.keras.layers.Dropout(dropout_rate)
+        self.add_dense = tf.keras.layers.Add()
+        self.layer_norm_dense = tf.keras.layers.LayerNormalization(epsilon=1e-6)
 
     def call(self, inputs, mask=None, training=None):
-        x, enc_output = inputs
+        x, x_encoder = inputs
+        if mask is not None:
+            mask1 = [mask[0], mask[0]]
+            mask2 = [mask[0], mask[1]]
+        else:
+            mask1 = None
+            mask2 = None
 
-        attn_output1 = self.attn1([x, x, x], mask=mask)
-        attn_output1 = self.dropout1(attn_output1, training=training)
-        norm_output1 = self.layernorm1(x + attn_output1)
+        attention = self.multi_head_attention1([x, x, x], mask=mask1)
+        attention = self.dropout_attention1(attention, training=training)
+        x = self.add_attention1([x, attention])
+        x = self.layer_norm_attention1(x)
 
-        attn_output2 = self.attn2([norm_output1, enc_output, enc_output], mask=mask)
-        attn_output2 = self.dropout2(attn_output2, training=training)
-        norm_output2 = self.layernorm2(norm_output1 + attn_output2)
+        attention = self.multi_head_attention2([x, x_encoder, x_encoder], mask=mask2)
+        attention = self.dropout_attention2(attention, training=training)
+        x = self.add_attention2([x, attention])
+        x = self.layer_norm_attention2(x)
 
-        ffn_output = self.linear1(norm_output1)
-        ffn_output = self.dropout3(ffn_output, training=training)
-        ffn_output = self.linear2(ffn_output)
-        ffn_output = self.dropout4(ffn_output, training=training)
-        norm_output3 = self.layernorm3(norm_output2 + ffn_output)
+        # Feed Forward
+        dense = self.dense1(x)
+        dense = self.dense2(dense)
+        dense = self.dropout_dense(dense, training=training)
+        x = self.add_dense([x, dense])
+        x = self.layer_norm_dense(x)
 
-        return norm_output3
+        return x
+
+    def compute_mask(self, inputs, mask=None):
+        if mask:
+            target_mask = mask[0]
+            if target_mask is None:
+                return None
+            return tf.convert_to_tensor(target_mask)
+        return None
 
     def get_config(self):
         config = {"embed_dim": self.embed_dim, "num_heads": self.num_heads,
                   "ff_dim": self.ff_dim, "dropout_rate": self.dropout_rate,
-                  "look_ahead_mask": self.look_ahead_mask}
-        base_config = super(TransformerDecoderLayer, self).get_config()
+                  "causal": self.causal}
+        base_config = super(DecoderLayer, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
 
 
-class BaseTransformerEncoder(tf.keras.layers.Layer):
+class BaseEncoder(tf.keras.layers.Layer):
     def __init__(self, layers, norm=False, **kwargs):
-        super(BaseTransformerEncoder, self).__init__(**kwargs)
+        super(BaseEncoder, self).__init__(**kwargs)
         self.norm = norm
         if norm:
-            self._norm_layer = tf.keras.layers.LayerNormalization(epsilon=1e-5)
+            self.norm_layer = tf.keras.layers.LayerNormalization(epsilon=1e-5)
         else:
-            self._norm_layer = None
+            self.norm_layer = None
         self.layers = layers
         self.supports_masking = True
 
-    def call(self, inputs, **kwargs):
+    def call(self, inputs, mask=None, **kwargs):
         x = inputs
         for layer in self.layers:
-            x = layer(x)
+            x = layer(x, mask=mask)
 
         if self.norm:
-            x = self._norm_layer(x)
+            x = self.norm_layer(x)
 
         return x
 
     def get_config(self):
         config = {"norm": self.norm}
-        base_config = super(BaseTransformerEncoder, self).get_config()
+        base_config = super(BaseEncoder, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
 
 
-class BaseTransformerDecoder(tf.keras.layers.Layer):
+class BaseDecoder(tf.keras.layers.Layer):
     def __init__(self, layers, norm=False, return_sequence=False, **kwargs):
-        super(BaseTransformerDecoder, self).__init__(**kwargs)
+        super(BaseDecoder, self).__init__(**kwargs)
         self.norm = norm
         if norm:
-            self._norm_layer = tf.keras.layers.LayerNormalization(epsilon=1e-5)
+            self.norm_layer = tf.keras.layers.LayerNormalization(epsilon=1e-5)
         else:
-            self._norm_layer = None
+            self.norm_layer = None
         self.return_sequence = return_sequence
         self.layers = layers
         self.supports_masking = True
 
-    def call(self, inputs, **kwargs):
-        x, enc_output = inputs
+    def call(self, inputs, mask=None, **kwargs):
+        x, x_encoder = inputs
 
         decode_sequence = []
         for layer in self.layers:
-            x = layer([x, enc_output])
+            x = layer([x, x_encoder], mask=mask)
             decode_sequence.append(x)
 
         if self.norm:
-            x = self._norm_layer(x)
-            decode_sequence = [self._norm_layer(x) for x in decode_sequence]
+            decode_sequence = [self.norm_layer(x) for x in decode_sequence]
 
         if self.return_sequence:
             x = tf.stack(decode_sequence, axis=0)
             x = tf.transpose(x, [1, 0, 2, 3])
+        else:
+            x = decode_sequence[-1]
 
         return x
 
+    def compute_mask(self, inputs, mask=None):
+        if mask:
+            target_mask = mask[0]
+            if target_mask is None:
+                return None
+            return tf.convert_to_tensor(target_mask)
+        return None
+
     def get_config(self):
         config = {"norm": self.norm, "return_sequence": self.return_sequence}
-        base_config = super(BaseTransformerDecoder, self).get_config()
+        base_config = super(BaseDecoder, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
 
 
-class TransformerEncoder(BaseTransformerEncoder):
+class Encoder(BaseEncoder):
     def __init__(self, embed_dim, num_heads, ff_dim, num_layers, dropout_rate=0.1, norm=False, **kwargs):
         self.embed_dim = embed_dim
         self.num_heads = num_heads
         self.ff_dim = ff_dim
         self.num_layers = num_layers
         self.dropout_rate = dropout_rate
-        layers = [TransformerEncoderLayer(embed_dim, num_heads, ff_dim, dropout_rate)
+        layers = [EncoderLayer(embed_dim, num_heads, ff_dim, dropout_rate)
                   for i in range(num_layers)]
-        super(TransformerEncoder, self).__init__(layers=layers, norm=norm, **kwargs)
+        super(Encoder, self).__init__(layers=layers, norm=norm, **kwargs)
 
     def get_config(self):
         config = {"embed_dim": self.embed_dim, "num_heads": self.num_heads,
                   "ff_dim": self.ff_dim, "dropout_rate": self.dropout_rate,
                   "num_layers": self.num_layers}
-        base_config = super(TransformerEncoder, self).get_config()
+        base_config = super(Encoder, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
 
 
-class TransformerDecoder(BaseTransformerDecoder):
+class Decoder(BaseDecoder):
     def __init__(self, embed_dim, num_heads, ff_dim, num_layers, dropout_rate=0.1, norm=False,
-                 look_ahead_mask=False, return_sequence=False, **kwargs):
+                 causal=True, return_sequence=False, **kwargs):
         self.embed_dim = embed_dim
         self.num_heads = num_heads
         self.ff_dim = ff_dim
         self.num_layers = num_layers
         self.dropout_rate = dropout_rate
-        self.look_ahead_mask = look_ahead_mask
-        layers = [TransformerDecoderLayer(embed_dim, num_heads, ff_dim, dropout_rate, look_ahead_mask)
+        self.causal = causal
+        layers = [DecoderLayer(embed_dim, num_heads, ff_dim, dropout_rate, causal)
                   for i in range(num_layers)]
-        super(TransformerDecoder, self).__init__(layers=layers, norm=norm, return_sequence=return_sequence, **kwargs)
+        super(Decoder, self).__init__(layers=layers, norm=norm, return_sequence=return_sequence, **kwargs)
 
     def get_config(self):
         config = {"embed_dim": self.embed_dim, "num_heads": self.num_heads,
                   "ff_dim": self.ff_dim, "dropout_rate": self.dropout_rate,
-                  "num_layers": self.num_layers}
-        base_config = super(TransformerDecoder, self).get_config()
+                  "num_layers": self.num_layers, "causal": self.causal}
+        base_config = super(Decoder, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))

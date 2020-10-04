@@ -4,7 +4,7 @@ import tensorflow as tf
 import tensorflow_datasets as tfds
 
 from chambers.layers.embedding import PositionalEmbedding1D
-from simple_transformer import Encoder, Decoder
+from chambers.layers.transformer import Encoder, Decoder
 
 
 def Seq2SeqTransformer(input_vocab_size, output_vocab_size, embed_dim, num_heads, dim_feedforward,

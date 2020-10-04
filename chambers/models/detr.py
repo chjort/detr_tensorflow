@@ -1,80 +1,95 @@
-import numpy as np
-
-np.random.seed(42)
+import tensorflow
 import tensorflow as tf
 
+from chambers.layers.embedding import PositionalEmbedding2D
 from chambers.layers.masking import DownsampleMasking, ReshapeWithMask
-from chambers.layers.transformer import BaseTransformerDecoder, TransformerEncoderLayer, \
-    BaseTransformerEncoder, TransformerDecoderLayer
-from chambers.layers.embedding import PositionalEmbedding2D, LearnedEmbedding
+from chambers.layers.transformer import BaseDecoder, EncoderLayer, \
+    BaseEncoder, DecoderLayer
 from chambers.utils.tf import set_supports_masking
-import tensorflow
 
 
-class TransformerEncoderLayerDETR(TransformerEncoderLayer):
-    def call(self, inputs, training=None):
-        v, pos_encoding = inputs
+class EncoderLayerDETR(EncoderLayer):
+    def call(self, inputs, mask=None, training=None):
+        inputs, pos_encoding = inputs
+        if mask is not None:
+            mask = [mask[0], mask[0]]
 
-        q = k = v + pos_encoding
+        q = v = k = inputs
+        q = q + pos_encoding
+        k = k + pos_encoding
 
-        attn_output = self.att([q, k, v])
-        attn_output = self.dropout(attn_output, training=training)
-        norm_output1 = self.layernorm1(v + attn_output)
+        attention = self.multi_head_attention([q, v, k], mask=mask)
+        attention = self.dropout_attention(attention, training=training)
+        x = self.add_attention([inputs, attention])
+        x = self.layer_norm_attention(x)
 
-        ffn_output = self.linear1(norm_output1)
-        ffn_output = self.dropout1(ffn_output, training=training)
-        ffn_output = self.linear2(ffn_output)
-        ffn_output = self.dropout2(ffn_output, training=training)
-        norm_output2 = self.layernorm2(norm_output1 + ffn_output)
+        # Feed Forward
+        dense = self.dense1(x)
+        dense = self.dense2(dense)
+        dense = self.dropout_dense(dense, training=training)
+        x = self.add_dense([x, dense])
+        x = self.layer_norm_dense(x)
 
-        return norm_output2
-
-
-class TransformerDecoderLayerDETR(TransformerDecoderLayer):
-    def call(self, inputs, training=None):
-        v, enc_output, pos_enc, object_enc = inputs
-
-        q = k = v + object_enc
-
-        attn_output1 = self.attn1([q, k, v])
-        attn_output1 = self.dropout1(attn_output1, training=training)
-        norm_output1 = self.layernorm1(v + attn_output1)
-
-        q = norm_output1 + object_enc
-        k = enc_output + pos_enc
-
-        attn_output2 = self.attn2([q, k, enc_output])
-        attn_output2 = self.dropout2(attn_output2)
-        norm_output2 = self.layernorm2(norm_output1 + attn_output2)
-
-        ffn_output = self.linear1(norm_output1)
-        ffn_output = self.dropout3(ffn_output, training=training)
-        ffn_output = self.linear2(ffn_output)
-        ffn_output = self.dropout4(ffn_output, training=training)
-        norm_output3 = self.layernorm3(norm_output2 + ffn_output)
-
-        return norm_output3
+        return x
 
 
-class TransformerEncoderDETR(BaseTransformerEncoder):
+class DecoderLayerDETR(DecoderLayer):
+    def __init__(self, embed_dim, num_heads, ff_dim, dropout_rate=0.1):
+        super(DecoderLayerDETR, self).__init__(embed_dim=embed_dim, num_heads=num_heads, ff_dim=ff_dim,
+                                               dropout_rate=dropout_rate, causal=False)
+
+    def call(self, inputs, mask=None, training=None):
+        x, x_encoder, pos_encoding, object_queries = inputs
+        if mask is not None:
+            mask = [None, mask[1]]
+
+        q = x + object_queries
+        v = x
+        k = x + object_queries
+
+        attention = self.multi_head_attention1([q, v, k], mask=None)
+        attention = self.dropout_attention1(attention, training=training)
+        x = self.add_attention1([x, attention])
+        x = self.layer_norm_attention1(x)
+
+        q2 = x + object_queries
+        v2 = x_encoder
+        k2 = x_encoder + pos_encoding
+
+        attention = self.multi_head_attention2([q2, v2, k2], mask=mask)
+        attention = self.dropout_attention2(attention, training=training)
+        x = self.add_attention2([x, attention])
+        x = self.layer_norm_attention2(x)
+
+        # Feed Forward
+        dense = self.dense1(x)
+        dense = self.dense2(dense)
+        dense = self.dropout_dense(dense, training=training)
+        x = self.add_dense([x, dense])
+        x = self.layer_norm_dense(x)
+
+        return x
+
+
+class EncoderDETR(BaseEncoder):
     def __init__(self, embed_dim, num_heads, ff_dim, num_layers, dropout_rate=0.1, norm=False, **kwargs):
         self.embed_dim = embed_dim
         self.num_heads = num_heads
         self.ff_dim = ff_dim
         self.num_layers = num_layers
         self.dropout_rate = dropout_rate
-        layers = [TransformerEncoderLayerDETR(embed_dim, num_heads, ff_dim, dropout_rate)
+        layers = [EncoderLayerDETR(embed_dim, num_heads, ff_dim, dropout_rate)
                   for i in range(num_layers)]
-        super(TransformerEncoderDETR, self).__init__(layers=layers, norm=norm, **kwargs)
+        super(EncoderDETR, self).__init__(layers=layers, norm=norm, **kwargs)
 
-    def call(self, inputs, **kwargs):
+    def call(self, inputs, mask=None, **kwargs):
         x, pos_encoding = inputs
 
         for layer in self.layers:
-            x = layer([x, pos_encoding])
+            x = layer([x, pos_encoding], mask=mask)
 
         if self.norm:
-            x = self._norm_layer(x)
+            x = self.norm_layer(x)
 
         return x
 
@@ -82,11 +97,11 @@ class TransformerEncoderDETR(BaseTransformerEncoder):
         config = {"embed_dim": self.embed_dim, "num_heads": self.num_heads,
                   "ff_dim": self.ff_dim, "dropout_rate": self.dropout_rate,
                   "num_layers": self.num_layers}
-        base_config = super(TransformerEncoderDETR, self).get_config()
+        base_config = super(EncoderDETR, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
 
 
-class TransformerDecoderDETR(BaseTransformerDecoder):
+class DecoderDETR(BaseDecoder):
 
     def __init__(self, n_object_queries, embed_dim, num_heads, ff_dim, num_layers, dropout_rate=0.1, norm=False,
                  return_sequence=False, **kwargs):
@@ -95,41 +110,48 @@ class TransformerDecoderDETR(BaseTransformerDecoder):
         self.ff_dim = ff_dim
         self.num_layers = num_layers
         self.dropout_rate = dropout_rate
-
         self.n_object_queries = n_object_queries
-        self.object_queries_layer = LearnedEmbedding(n_object_queries, embed_dim, add_to_input=False)
 
-        layers = [TransformerDecoderLayerDETR(embed_dim, num_heads, ff_dim, dropout_rate)
+        layers = [DecoderLayerDETR(embed_dim, num_heads, ff_dim, dropout_rate)
                   for i in range(num_layers)]
-        super(TransformerDecoderDETR, self).__init__(layers=layers, norm=norm, return_sequence=return_sequence,
-                                                     **kwargs)
+        super(DecoderDETR, self).__init__(layers=layers, norm=norm, return_sequence=return_sequence,
+                                          **kwargs)
 
-    def call(self, inputs, **kwargs):
-        enc_output, pos_enc = inputs
+    def build(self, input_shape):
+        self.object_queries = self.add_weight("object_queries",
+                                              shape=(1, self.n_object_queries, self.embed_dim),
+                                              initializer="normal",
+                                              trainable=True,
+                                              )
 
-        batch_size = tf.shape(enc_output)[0]
+    def call(self, inputs, mask=None, **kwargs):
+        pos_encoding, x_encoder = inputs
+        if mask is not None:
+            mask = [None, mask[1]]
+
+        batch_size = tf.shape(x_encoder)[0]
         x = tf.zeros([batch_size, self.n_object_queries, self.embed_dim])
-        object_queries = self.object_queries_layer(x)
 
         decode_sequence = []
         for layer in self.layers:
-            x = layer([x, enc_output, pos_enc, object_queries])
+            x = layer([x, x_encoder, pos_encoding, self.object_queries], mask=mask)
             decode_sequence.append(x)
 
         if self.norm:
-            x = self._norm_layer(x)
-            decode_sequence = [self._norm_layer(x) for x in decode_sequence]
+            decode_sequence = [self.norm_layer(x) for x in decode_sequence]
 
         if self.return_sequence:
             x = tf.stack(decode_sequence, axis=0)
             x = tf.transpose(x, [1, 0, 2, 3])
+        else:
+            x = decode_sequence[-1]
 
         return x
 
     def get_config(self):
         config = {"n_object_queries": self.n_object_queries, "embed_dim": self.embed_dim, "num_heads": self.num_heads,
                   "ff_dim": self.ff_dim, "dropout_rate": self.dropout_rate, "num_layers": self.num_layers}
-        base_config = super(TransformerDecoderDETR, self).get_config()
+        base_config = super(DecoderDETR, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
 
 
@@ -166,10 +188,10 @@ def DETR(input_shape, n_classes, n_object_queries, embed_dim, num_heads, dim_fee
     x_enc = ReshapeWithMask([-1, embed_dim], [-1], name="image_features_sequence")(
         x_enc)  # (batch_size, h*w, embed_dim)
 
-    enc_output = TransformerEncoderDETR(embed_dim, num_heads, dim_feedforward, num_encoder_layers, dropout_rate,
-                                        norm=False)([x_enc, pos_enc])
-    x = TransformerDecoderDETR(n_object_queries, embed_dim, num_heads, dim_feedforward, num_decoder_layers,
-                               dropout_rate, norm=True, return_sequence=return_decode_sequence)([enc_output, pos_enc])
+    enc_output = EncoderDETR(embed_dim, num_heads, dim_feedforward, num_encoder_layers, dropout_rate,
+                             norm=False)([x_enc, pos_enc])
+    x = DecoderDETR(n_object_queries, embed_dim, num_heads, dim_feedforward, num_decoder_layers,
+                    dropout_rate, norm=True, return_sequence=return_decode_sequence)([pos_enc, enc_output])
 
     n_classes = n_classes + 1  # Add 1 for the "Nothing" class
     x_class = tf.keras.layers.Dense(n_classes, name="class_embed")(x)
@@ -181,6 +203,7 @@ def DETR(input_shape, n_classes, n_object_queries, embed_dim, num_heads, dim_fee
 
     x = tf.keras.layers.Concatenate(axis=-1)([x_class, x_box])
 
+    # x = enc_output
     model = tf.keras.models.Model(inputs, x, name=name)
 
     return model
@@ -198,8 +221,8 @@ def load_detr(path, compile=True):
                                               "DownsampleMasking": DownsampleMasking,
                                               "PositionalEmbedding2D": PositionalEmbedding2D,
                                               "ReshapeWithMask": ReshapeWithMask,
-                                              "TransformerEncoderDETR": TransformerEncoderDETR,
-                                              "TransformerDecoderDETR": TransformerDecoderDETR,
+                                              "TransformerEncoderDETR": EncoderDETR,
+                                              "TransformerDecoderDETR": DecoderDETR,
                                               "LearningRateMultiplier": LearningRateMultiplier,
                                               "Addons>AdamW": AdamW,
                                               "HungarianLoss": HungarianLoss
@@ -236,3 +259,38 @@ def post_process(y_pred, min_prob=None):
         probs = probs[keep_mask]
 
     return boxes, labels, probs
+
+
+# %%
+num_classes = 91
+embed_dim = 256
+n_object_queries_ = 100
+batch_size = 2
+input_shape = (896, 1216, 3)
+# input_shape = (None, None, 3)
+return_sequence = False
+
+model = DETR(input_shape=input_shape,
+             n_classes=num_classes,
+             n_object_queries=n_object_queries_,
+             embed_dim=embed_dim,
+             num_heads=8,
+             dim_feedforward=2048,
+             num_encoder_layers=6,
+             num_decoder_layers=6,
+             dropout_rate=0.1,
+             return_decode_sequence=return_sequence,
+             mask_value=-1.
+             )
+model.summary()
+
+# %%
+import numpy as np
+
+x1 = np.random.normal(size=(batch_size, 544, 896, 3))
+x1 = np.pad(x1, [(0, 0), (0, 352), (0, 320), (0, 0)], mode="constant", constant_values=-1.)
+print(x1.shape)
+
+z = model(x1)
+print(z.shape)
+# print(z._keras_mask.shape)

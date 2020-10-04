@@ -130,28 +130,3 @@ class PositionalEmbedding2D(tf.keras.layers.Layer):
         base_config = super(PositionalEmbedding2D, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
 
-
-class LearnedEmbedding(tf.keras.layers.Layer):
-    def __init__(self, num_embeddings, embed_dim, add_to_input=True, **kwargs):
-        super(LearnedEmbedding, self).__init__(**kwargs)
-        self.num_embeddings = num_embeddings
-        self.embed_dim = embed_dim
-        self.add_to_input = add_to_input
-        self.embeddings = self.add_weight("embeddings",
-                                          shape=[1, num_embeddings, embed_dim],
-                                          initializer="normal")
-
-    def call(self, inputs, **kwargs):
-        batch_size = tf.shape(inputs)[0]
-        x = tf.tile(self.embeddings, [batch_size, 1, 1])
-
-        if self.add_to_input:
-            x = inputs + x
-
-        return x
-
-    def get_config(self):
-        config = {"num_embeddings": self.num_embeddings, "embed_dim": self.embed_dim,
-                  "add_to_input": self.add_to_input}
-        base_config = super(LearnedEmbedding, self).get_config()
-        return dict(list(base_config.items()) + list(config.items()))
