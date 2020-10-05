@@ -80,12 +80,12 @@ class HungarianLoss(tf.keras.losses.Loss):
 
     def _compute_losses(self, y_true, y_pred):
         """
-        :param y_true: [batch_size, n_true_boxes, 5]
-        :param y_pred: [batch_size, n_pred_boxes, 4 + n_classes]
+        :param y_true: [batch_size, max_n_true, 5]
+        :param y_pred: [batch_size, n_pred, 4 + n_classes]
         :return:
         """
 
-        batch_mask = self._get_batch_mask(y_true)  # [batch_size, max_n_true_boxes_batch]
+        batch_mask = self._get_batch_mask(y_true)  # [batch_size, max_n_true]
 
         # cost_matrix (RaggedTensor) [batch_size, n_pred_boxes, None]
         cost_matrix = self._compute_cost_matrix(y_true, y_pred, batch_mask)  # TODO: input format
@@ -94,15 +94,10 @@ class HungarianLoss(tf.keras.losses.Loss):
         nan_matrices = tf.reduce_all(tf.math.is_nan(cost_matrix), axis=(1, 2))
         if tf.reduce_all(nan_matrices):
             return np.nan, np.nan, np.nan
-
         if tf.reduce_any(nan_matrices):
-            no_nan_matrices = tf.logical_not(nan_matrices)
-            cost_matrix = tf.ragged.boolean_mask(cost_matrix, no_nan_matrices)
-            batch_mask = tf.cast(
-                tf.transpose(tf.transpose(tf.cast(batch_mask, tf.float32)) * tf.cast(no_nan_matrices, tf.float32)),
-                tf.bool)
+            cost_matrix, batch_mask = self._remove_nan_cost_matrix(nan_matrices, cost_matrix, batch_mask)
 
-        lsa = batch_linear_sum_assignment_ragged(cost_matrix)  # [n_true_boxes, 2]
+        lsa = batch_linear_sum_assignment_ragged(cost_matrix)  # [total_n_true, 2]
 
         prediction_indices, target_indices = self._lsa_to_batch_indices(lsa, batch_mask)
         # ([n_true_boxes, 2], [n_true_boxes, 2])
@@ -113,14 +108,14 @@ class HungarianLoss(tf.keras.losses.Loss):
         y_true_boxes_lsa = y_true_lsa[..., :-1]
         y_true_labels_lsa = y_true_lsa[..., -1]
         y_pred_boxes_lsa = y_pred_lsa[..., :4]
-        y_pred_logits = y_pred[..., 4:]  # [1]
+        y_pred_logits = y_pred[..., 4:]
 
         batch_size = tf.shape(y_true)[0]
         n_pred_boxes = tf.shape(y_pred)[1]
         n_class = tf.shape(y_pred)[2] - 4
         no_class_labels = tf.cast(tf.fill([batch_size, n_pred_boxes], n_class - 1), tf.float32)
         y_true_labels_lsa = tf.tensor_scatter_nd_update(no_class_labels, prediction_indices,
-                                                        y_true_labels_lsa)  # [batch_size, n_pred_boxes]
+                                                        y_true_labels_lsa)  # [batch_size, n_pred]
 
         loss_ce = self.weighted_cross_entropy_loss(y_true_labels_lsa, y_pred_logits) * self.cross_ent_weight
         loss_l1 = self.l1_loss(y_true_boxes_lsa, y_pred_boxes_lsa) * self.l1_weight
@@ -144,6 +139,15 @@ class HungarianLoss(tf.keras.losses.Loss):
         return cost_matrix_mask
 
     @staticmethod
+    def _remove_nan_cost_matrix(nan_matrices, cost_matrix, batch_mask):
+        no_nan_matrices = tf.logical_not(nan_matrices)
+        cost_matrix = tf.ragged.boolean_mask(cost_matrix, no_nan_matrices)
+        batch_mask = tf.cast(
+            tf.transpose(tf.transpose(tf.cast(batch_mask, tf.float32)) * tf.cast(no_nan_matrices, tf.float32)),
+            tf.bool)
+        return cost_matrix, batch_mask
+
+    @staticmethod
     def _lsa_to_batch_indices(lsa_indices, batch_mask):
         sizes = tf.reduce_sum(tf.cast(batch_mask, tf.int32), axis=1)
         row_idx = repeat_indices(sizes)
@@ -157,7 +161,7 @@ class HungarianLoss(tf.keras.losses.Loss):
     def _get_batch_mask(self, y_true):
         """
         :param y_true:
-        :return: [batch_size, y_true.shape[0]]
+        :return: [batch_size, max_n_true]
         :rtype:
         """
         return tf.reduce_all(tf.not_equal(y_true, self.mask_value), -1)

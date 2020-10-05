@@ -65,7 +65,7 @@ def linear_sum_assignment_ragged(cost_matrix):
     return assignment
 
 
-@tf.function
+@tf.function(input_signature=[tf.TensorSpec(shape=[None, None, None], dtype=tf.float32)])
 def batch_linear_sum_assignment(cost_matrices):
     res = tf.map_fn(linear_sum_assignment, elems=cost_matrices, fn_output_signature=tf.int32)
     res = tf.reshape(res, [-1, 2])
