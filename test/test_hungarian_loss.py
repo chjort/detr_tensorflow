@@ -58,7 +58,8 @@ def load_samples(as_sequence=False):
     return y_true, y_pred
 
 
-hungarian = HungarianLoss(loss_weights=[1, 5, 2],
+hungarian = HungarianLoss(n_classes=91,
+                          loss_weights=[1, 5, 2],
                           lsa_loss_weights=[1, 5, 2],
                           mask_value=-1.,
                           sequence_input=False)
@@ -74,7 +75,8 @@ loss = hungarian(y_true, y_pred)
 # print(np.mean(times))  # 0.002422827482223511 (CH CPU)
 
 # with sequence
-hungarian = HungarianLoss(loss_weights=[1, 5, 2],
+hungarian = HungarianLoss(n_classes=91,
+                          loss_weights=[1, 5, 2],
                           lsa_loss_weights=[1, 5, 2],
                           mask_value=-1.,
                           sequence_input=True)
