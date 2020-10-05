@@ -28,31 +28,6 @@ def round(x, decimals=0):
     return rounded
 
 
-@tf.function(input_signature=[tf.TensorSpec(shape=[None, None], dtype=tf.float32)])
-def linear_sum_assignment(cost_matrix):
-    nans = tf.math.is_nan(cost_matrix)
-    if tf.reduce_any(nans):  # Convert nan to inf
-        cost_matrix = tf.where(nans, tf.fill(tf.shape(cost_matrix), np.inf), cost_matrix)
-
-    assignment = tf.py_function(func=linear_sum_assignment_scipy, inp=[cost_matrix], Tout=[tf.int32, tf.int32])
-    assignment = tf.stack(assignment, axis=1)
-    return assignment
-
-
-@tf.function(input_signature=[tf.RaggedTensorSpec(shape=[None, None, None], dtype=tf.float32)])
-def batch_linear_sum_assignment(cost_matrices):
-    batch_size = cost_matrices.bounding_shape()[0]
-
-    cost_matrix = cost_matrices[0].to_tensor()
-    lsa = linear_sum_assignment(cost_matrix)
-    for i in tf.range(1, batch_size):
-        cost_matrix = cost_matrices[i].to_tensor()
-        lsa_i = linear_sum_assignment(cost_matrix)
-        lsa = tf.concat([lsa, lsa_i], axis=0)
-
-    return lsa
-
-
 @tf.function(input_signature=[tf.TensorSpec(shape=None, dtype=tf.int32)])
 def repeat_indices(repeats):
     """
@@ -69,3 +44,38 @@ def repeat_indices(repeats):
     for i in tf.range(1, batch_size):
         arr = tf.concat([arr, tf.repeat(i, repeats[i])], axis=0)
     return arr
+
+
+@tf.function(input_signature=[tf.TensorSpec(shape=[None, None], dtype=tf.float32)])
+def linear_sum_assignment(cost_matrix):
+    nans = tf.math.is_nan(cost_matrix)
+    if tf.reduce_any(nans):  # Convert nan to inf
+        cost_matrix = tf.where(nans, tf.fill(tf.shape(cost_matrix), np.inf), cost_matrix)
+
+    assignment = tf.py_function(func=linear_sum_assignment_scipy, inp=[cost_matrix], Tout=[tf.int32, tf.int32])
+    assignment = tf.stack(assignment, axis=1)
+    return assignment
+
+
+@tf.function(input_signature=[tf.RaggedTensorSpec(shape=[None, None], dtype=tf.float32)])
+def linear_sum_assignment_ragged(cost_matrix):
+    cost_matrix = cost_matrix.to_tensor()
+    assignment = linear_sum_assignment(cost_matrix)
+    assignment = tf.RaggedTensor.from_tensor(assignment)
+    return assignment
+
+
+@tf.function
+def batch_lsa_tf(cost_matrices):
+    res = tf.map_fn(linear_sum_assignment, elems=cost_matrices, fn_output_signature=tf.int32)
+    # res = tf.vectorized_map(linear_sum_assignment, elems=cost_matrices)
+    res = tf.reshape(res, [-1, 2])
+    return res
+
+
+@tf.function(input_signature=[tf.RaggedTensorSpec(shape=[None, None, None], dtype=tf.float32)])
+def batch_linear_sum_assignment_ragged(cost_matrices):
+    res = tf.map_fn(linear_sum_assignment_ragged, elems=cost_matrices,
+                    fn_output_signature=tf.RaggedTensorSpec(shape=[None, 2], dtype=tf.int32))
+    res = tf.reshape(res.flat_values, [-1, 2])
+    return res

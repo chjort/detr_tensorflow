@@ -66,13 +66,14 @@ hungarian = HungarianLoss(n_classes=91,
 y_true, y_pred = load_samples()
 loss = hungarian(y_true, y_pred)
 
-# times = []
-# for i in range(200):
-#     st = time.time()
-#     hungarian(y_true, y_pred)
-#     end_time = time.time() - st
-#     times.append(end_time)
-# print(np.mean(times))  # 0.002422827482223511 (CH CPU)
+hungarian(y_true, y_pred)  # warmup
+times = []
+for i in range(200):
+    st = time.time()
+    hungarian(y_true, y_pred)
+    end_time = time.time() - st
+    times.append(end_time)
+print(np.mean(times))  # 0.006240495443344116
 
 # with sequence
 hungarian = HungarianLoss(n_classes=91,
@@ -83,13 +84,14 @@ hungarian = HungarianLoss(n_classes=91,
 y_true, y_pred = load_samples(as_sequence=True)
 seq_loss = hungarian(y_true, y_pred)
 
-# times = []
-# for i in range(200):
-#     st = time.time()
-#     hungarian(y_true, y_pred)
-#     end_time = time.time() - st
-#     times.append(end_time)
-# print(np.mean(times))  # 0.012478135824203491 (CH CPU)
+hungarian(y_true, y_pred)  # warmup
+times = []
+for i in range(200):
+    st = time.time()
+    hungarian(y_true, y_pred)
+    end_time = time.time() - st
+    times.append(end_time)
+print(np.mean(times))  # 0.03912675142288208
 
 print(loss)
 print(seq_loss)

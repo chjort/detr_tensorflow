@@ -1,7 +1,7 @@
 import numpy as np
 import tensorflow as tf
 
-from chambers.utils.tf import batch_linear_sum_assignment, repeat_indices
+from chambers.utils.tf import batch_linear_sum_assignment_ragged, repeat_indices
 from .iou import GIoULoss
 from .losses import L1Loss
 from .pairwise import pairwise_giou as _pairwise_giou, pairwise_l1 as _pairwise_l1
@@ -102,7 +102,7 @@ class HungarianLoss(tf.keras.losses.Loss):
                 tf.transpose(tf.transpose(tf.cast(batch_mask, tf.float32)) * tf.cast(no_nan_matrices, tf.float32)),
                 tf.bool)
 
-        lsa = batch_linear_sum_assignment(cost_matrix)  # [n_true_boxes, 2]
+        lsa = batch_linear_sum_assignment_ragged(cost_matrix)  # [n_true_boxes, 2]
 
         prediction_indices, target_indices = self._lsa_to_batch_indices(lsa, batch_mask)
         # ([n_true_boxes, 2], [n_true_boxes, 2])
