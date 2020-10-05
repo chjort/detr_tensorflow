@@ -68,7 +68,6 @@ def linear_sum_assignment_ragged(cost_matrix):
 @tf.function
 def batch_linear_sum_assignment(cost_matrices):
     res = tf.map_fn(linear_sum_assignment, elems=cost_matrices, fn_output_signature=tf.int32)
-    # res = tf.vectorized_map(linear_sum_assignment, elems=cost_matrices)
     res = tf.reshape(res, [-1, 2])
     return res
 
