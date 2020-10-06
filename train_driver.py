@@ -114,9 +114,9 @@ detr.summary()
 
 # set training configuration
 print("\n### TRAINING ###")
-EPOCHS = 50  # 150
-# n_train = 416
-# n_val = 416
+EPOCHS = 10  # 150
+n_train = 416
+n_val = 416
 STEPS_PER_EPOCH = n_train // GLOBAL_BATCH_SIZE
 VAL_STEPS_PER_EPOCH = n_val // GLOBAL_BATCH_SIZE
 
@@ -127,43 +127,43 @@ print("Training steps per epoch:", STEPS_PER_EPOCH)
 print("Validation steps per epoch:", VAL_STEPS_PER_EPOCH)
 
 # make output folders and paths
-model_dir = os.path.join("outputs", timestamp_now())
-checkpoint_dir = os.path.join(model_dir, "checkpoints")
-log_dir = os.path.join(model_dir, "logs")
-os.makedirs(checkpoint_dir, exist_ok=True)
-os.makedirs(log_dir, exist_ok=True)
-checkpoint_path = os.path.join(checkpoint_dir, "model-epoch{epoch}.h5")
-csv_path = os.path.join(log_dir, "logs.csv")
-tensorboard_path = os.path.join(log_dir, "tb")
+# model_dir = os.path.join("outputs", timestamp_now())
+# checkpoint_dir = os.path.join(model_dir, "checkpoints")
+# log_dir = os.path.join(model_dir, "logs")
+# os.makedirs(checkpoint_dir, exist_ok=True)
+# os.makedirs(log_dir, exist_ok=True)
+# checkpoint_path = os.path.join(checkpoint_dir, "model-epoch{epoch}.h5")
+# csv_path = os.path.join(log_dir, "logs.csv")
+# tensorboard_path = os.path.join(log_dir, "tb")
 
 # create callbacks
 callbacks = [
-    HungarianLossLogger(val_dataset, steps=VAL_STEPS_PER_EPOCH),
-    DETRLossDiffLogger("samples/fb_log.txt"),
-    tf.keras.callbacks.CSVLogger(csv_path),
-    GroupedTensorBoard(loss_groups=["val_loss_ce", "val_loss_l1", "val_loss_giou"],
-                       writer_prefixes="decode_layer",
-                       log_dir=tensorboard_path,
-                       write_graph=True,
-                       update_freq="epoch",
-                       profile_batch=0),
-    DETRPredImageTensorboard(log_dir=tensorboard_path,
-                             min_prob=(0.0, 0.1, 0.5, 0.7),
-                             image_files=["samples/sample0.jpg",
-                                          "samples/sample1.png",
-                                          "samples/sample2.jpg"
-                                          ],
-                             label_names=CLASSES_TF
-                             ),
-    tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
-                                       monitor="val_loss",
-                                       save_best_only=False,
-                                       save_weights_only=False
-                                       )
+    # HungarianLossLogger(val_dataset, steps=VAL_STEPS_PER_EPOCH),
+    # DETRLossDiffLogger("samples/fb_log.txt"),
+    # tf.keras.callbacks.CSVLogger(csv_path),
+    # GroupedTensorBoard(loss_groups=["val_loss_ce", "val_loss_l1", "val_loss_giou"],
+    #                    writer_prefixes="decode_layer",
+    #                    log_dir=tensorboard_path,
+    #                    write_graph=True,
+    #                    update_freq="epoch",
+    #                    profile_batch=0),
+    # DETRPredImageTensorboard(log_dir=tensorboard_path,
+    #                          min_prob=(0.0, 0.1, 0.5, 0.7),
+    #                          image_files=["samples/sample0.jpg",
+    #                                       "samples/sample1.png",
+    #                                       "samples/sample2.jpg"
+    #                                       ],
+    #                          label_names=CLASSES_TF
+    #                          ),
+    # tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
+    #                                    monitor="val_loss",
+    #                                    save_best_only=False,
+    #                                    save_weights_only=False
+    #                                    )
 ]
 
 # fit
-detr.save(os.path.join(checkpoint_dir, "model-init.h5"))  # save initialization
+# detr.save(os.path.join(checkpoint_dir, "model-init.h5"))  # save initialization
 history = detr.fit(train_dataset,
                    epochs=EPOCHS,
                    steps_per_epoch=STEPS_PER_EPOCH,

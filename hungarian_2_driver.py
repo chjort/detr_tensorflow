@@ -7,6 +7,7 @@ from chambers.losses.hungarian_2 import HungarianLoss, batch_linear_sum_assignme
 from chambers.utils.boxes import box_cxcywh_to_yxyx
 from chambers.utils.tf import lsa_to_batch_indices
 
+
 def load_samples(as_sequence=False):
     samples = np.load("test/x_pt.npy")
     samples = tf.convert_to_tensor(samples)
@@ -66,23 +67,35 @@ hungarian = HungarianLoss(n_classes=91,
 # loss = hungarian(y_true, y_pred)
 
 # %%
-y_true, y_pred = load_samples(as_sequence=False)
+seq = True
+
+y_true, y_pred = load_samples(as_sequence=seq)
+# y_true3 = y_true[1:2, :12]
+# y_true3 = tf.pad(y_true3, paddings=[[0, 0], [0, 12], [0, 0]], constant_values=-1)
+# y_true = tf.concat([y_true, y_true3], axis=0)
+
+# y_pred3 = y_pred[1:2]
+# y_pred = tf.concat([y_pred, y_pred3], axis=0)
 print(y_true.shape, y_pred.shape)
-sy_true, sy_pred = load_samples(as_sequence=True)
-print(sy_true.shape, sy_pred.shape)
 
-batch_size = tf.shape(sy_pred)[0]
-seq_len = tf.shape(sy_pred)[1]
-n_preds = tf.shape(sy_pred)[2]
-pred_dim = tf.shape(sy_pred)[3]
+if seq:
+    batch_size = tf.shape(y_pred)[0]
+    seq_len = tf.shape(y_pred)[1]
+    n_preds = tf.shape(y_pred)[2]
+    pred_dim = tf.shape(y_pred)[3]
 
-sy_true_r = tf.repeat(sy_true, seq_len, axis=0)
-sy_pred_r = tf.reshape(sy_pred, [-1, n_preds, pred_dim])
-print(sy_true_r.shape, sy_pred_r.shape)
+    y_true = tf.repeat(y_true, seq_len, axis=0)
+    y_pred = tf.reshape(y_pred, [-1, n_preds, pred_dim])
+    print(y_true.shape, y_pred.shape)
+else:
+    batch_size = tf.shape(y_pred)[0]
+    seq_len = None
+    n_preds = tf.shape(y_pred)[1]
+    pred_dim = tf.shape(y_pred)[2]
 
 # all seq
-batch_mask = hungarian._get_batch_mask(sy_true_r)
-cost_matrix = hungarian._compute_cost_matrix(sy_true_r, sy_pred_r, batch_mask)
+batch_mask = hungarian._get_batch_mask(y_true)
+cost_matrix = hungarian._compute_cost_matrix(y_true, y_pred, batch_mask)
 print("C shape:", cost_matrix.bounding_shape())
 
 lsa = batch_linear_sum_assignment_ragged(cost_matrix)
@@ -101,22 +114,69 @@ y_true_labels_lsa = y_true_lsa[..., -1]
 y_pred_boxes_lsa = y_pred_lsa[..., :4]
 y_pred_logits = y_pred[..., 4:]
 
-l1 = hungarian.l1_loss(y_true_boxes_lsa, y_pred_boxes_lsa)# * hungarian.l1_weight
-giou = hungarian.giou_loss(y_true_boxes_lsa, y_pred_boxes_lsa)# * hungarian.giou_weight
-l1.shape
-giou.shape
+l1 = hungarian.l1_loss(y_true_boxes_lsa, y_pred_boxes_lsa) * hungarian.l1_weight
+giou = hungarian.giou_loss(y_true_boxes_lsa, y_pred_boxes_lsa) * hungarian.giou_weight
 
-#%% single seq
-# tf.assert_equal(sy_pred_r[:1], sy_pred[:1, 0, :, :])
-i = 11
-p_s = sy_pred_r[i:i+1]
-y_s = sy_true_r[i:i+1]
-sbatch_mask = hungarian._get_batch_mask(y_s)
-scost_matrix = hungarian._compute_cost_matrix(y_s, p_s, sbatch_mask)
-scost_matrix.bounding_shape()
-print("C shape:", scost_matrix.bounding_shape())
+# TODO: Cross-entropy
+if seq:
+    batch_size_ce = tf.shape(y_true)[0]
+else:
+    batch_size_ce = batch_size
+n_class = tf.shape(y_pred)[2] - 4
+no_class_labels = tf.cast(tf.fill([batch_size_ce, n_preds], n_class - 1), tf.float32)
+y_true_labels_lsa = tf.tensor_scatter_nd_update(no_class_labels, y_pred_idx, y_true_labels_lsa)
 
-tf.assert_equal(cost_matrix[i:i+1].to_tensor(), scost_matrix.to_tensor())
+ce = hungarian.weighted_cross_entropy_loss(y_true_labels_lsa, y_pred_logits) * hungarian.cross_ent_weight
+# 0.501876
+
+
+# %%
+sizes = tf.reduce_sum(tf.cast(batch_mask, tf.int32), axis=1)
+
+seq_indices = tf.range(batch_size * seq_len)
+seq_indices = tf.transpose(tf.reshape(seq_indices, [batch_size, -1]))
+
+ce = tf.gather(ce, seq_indices)
+
+l1 = tf.RaggedTensor.from_row_lengths(l1, sizes)
+l1 = tf.gather(l1, seq_indices)
+l1 = l1.merge_dims(1, 2)
+
+giou = tf.RaggedTensor.from_row_lengths(giou, sizes)
+giou = tf.gather(giou, seq_indices)
+giou = giou.merge_dims(1, 2)
+
+ce
+ce_layer = tf.reduce_mean(ce, axis=-1)
+l1_layer = tf.reduce_mean(l1, axis=-1)
+giou_layer = tf.reduce_mean(giou, axis=-1)
+
+print(ce_layer)
+print(l1_layer)
+print(giou_layer)
+
+# %%
+loss = ce_layer[-1] + l1_layer[-1] + giou_layer[-1]
+seq_loss = tf.reduce_sum(ce_layer) + tf.reduce_sum(l1_layer) + tf.reduce_sum(giou_layer)
+
+loss
+seq_loss
+# tf.Tensor(0.91030025, shape=(), dtype=float32)
+# tf.Tensor(5.6704035, shape=(), dtype=float32)
+
+# %%
+# sizes = tf.reduce_sum(tf.cast(batch_mask, tf.int32), axis=1)
+# sizes
+#
+# y_true_idx
+# y_pred_idx
+#
+# tf.split(y_true_idx, 2)[0]
+#
+# l1.shape
+# giou.shape
+#
+# tf.reshape(sizes, [batch_size, -1])
 
 # %% with sequence
 # hungarian = HungarianLoss(n_classes=91,
