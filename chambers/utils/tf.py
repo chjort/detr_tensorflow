@@ -78,3 +78,14 @@ def batch_linear_sum_assignment_ragged(cost_matrices):
                     fn_output_signature=tf.RaggedTensorSpec(shape=[None, 2], dtype=tf.int32))
     res = tf.reshape(res.flat_values, [-1, 2])
     return res
+
+
+def lsa_to_batch_indices(lsa_indices, batch_mask):
+    sizes = tf.reduce_sum(tf.cast(batch_mask, tf.int32), axis=1)
+    row_idx = repeat_indices(sizes)
+    row_idx = tf.tile(tf.expand_dims(row_idx, -1), [1, 2])
+    indcs = tf.stack([row_idx, lsa_indices], axis=0)
+
+    prediction_idx = tf.transpose(indcs[:, :, 0])
+    target_idx = tf.transpose(indcs[:, :, 1])
+    return prediction_idx, target_idx
