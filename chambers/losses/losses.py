@@ -22,9 +22,9 @@ class L1Loss2(LossFunctionWrapper):
 
 def l1_loss(y_true, y_pred):
     l1_dist = tf.abs(y_true - y_pred)
-    n_target_boxes = tf.cast(tf.shape(y_true)[0], tf.float32)
-    loss_l1 = tf.reduce_sum(l1_dist) / n_target_boxes
-    return loss_l1
+    l1_dist = tf.reduce_sum(l1_dist, axis=-1)
+    l1_dist = tf.reduce_mean(l1_dist)
+    return l1_dist
 
 
 def l1_loss_2(y_true, y_pred):

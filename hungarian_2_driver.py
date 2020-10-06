@@ -146,7 +146,6 @@ giou = tf.RaggedTensor.from_row_lengths(giou, sizes)
 giou = tf.gather(giou, seq_indices)
 giou = giou.merge_dims(1, 2)
 
-ce
 ce_layer = tf.reduce_mean(ce, axis=-1)
 l1_layer = tf.reduce_mean(l1, axis=-1)
 giou_layer = tf.reduce_mean(giou, axis=-1)
@@ -156,13 +155,18 @@ print(l1_layer)
 print(giou_layer)
 
 # %%
+loss = l1_layer[-1] + giou_layer[-1]
+seq_loss = tf.reduce_sum(l1_layer) + tf.reduce_sum(giou_layer)
+print(loss.numpy(), seq_loss.numpy())
+# 0.91030025
+# 5.6704035
+
+# TODO: Cross-entropy is wrong!
 loss = ce_layer[-1] + l1_layer[-1] + giou_layer[-1]
 seq_loss = tf.reduce_sum(ce_layer) + tf.reduce_sum(l1_layer) + tf.reduce_sum(giou_layer)
-
-loss
-seq_loss
-# tf.Tensor(0.91030025, shape=(), dtype=float32)
-# tf.Tensor(5.6704035, shape=(), dtype=float32)
+print(loss.numpy(), seq_loss.numpy())
+# 1.4096249
+# 8.68166
 
 # %%
 # sizes = tf.reduce_sum(tf.cast(batch_mask, tf.int32), axis=1)

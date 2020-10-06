@@ -2,8 +2,8 @@ import numpy as np
 import tensorflow as tf
 
 from chambers.utils.tf import batch_linear_sum_assignment_ragged, lsa_to_batch_indices
-from .iou import GIoULoss
-from .losses import L1Loss
+from .iou import GIoULoss2
+from .losses import L1Loss2
 from .pairwise import pairwise_giou as _pairwise_giou, pairwise_l1 as _pairwise_l1
 
 
@@ -21,8 +21,8 @@ class HungarianLoss(tf.keras.losses.Loss):
                  sequence_input=False, sum_losses=True, name="hungarian_loss", **kwargs):
         self.weighted_cross_entropy_loss = WeightedSparseCategoricalCrossEntropyDETR(
             n_classes=n_classes, no_class_weight=no_class_weight, reduction=tf.keras.losses.Reduction.NONE)
-        self.l1_loss = L1Loss(reduction=tf.keras.losses.Reduction.NONE)
-        self.giou_loss = GIoULoss(reduction=tf.keras.losses.Reduction.NONE)
+        self.l1_loss = L1Loss2(reduction=tf.keras.losses.Reduction.NONE)
+        self.giou_loss = GIoULoss2(reduction=tf.keras.losses.Reduction.NONE)
         self.lsa_losses = [pairwise_sparse_softmax, pairwise_l1, pairwise_giou]
 
         self.loss_weights = loss_weights
@@ -181,7 +181,7 @@ class WeightedSparseCategoricalCrossEntropyDETR(tf.keras.losses.Loss):
 
         loss_ce = tf.keras.losses.categorical_crossentropy(y_true, y_pred, from_logits=True)
         loss_ce = loss_ce * weights
-        loss_ce = tf.reduce_sum(loss_ce) / tf.reduce_sum(weights)
+        loss_ce = tf.reduce_sum(loss_ce, axis=-1) / tf.reduce_sum(weights)
         return loss_ce
 
     def get_config(self):
