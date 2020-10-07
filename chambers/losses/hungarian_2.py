@@ -19,10 +19,21 @@ class HungarianLoss(tf.keras.losses.Loss):
 
     def __init__(self, n_classes, loss_weights=None, lsa_loss_weights=None, no_class_weight=0.1, mask_value=None,
                  sequence_input=False, sum_losses=True, name="hungarian_loss", **kwargs):
-        self.weighted_cross_entropy_loss = WeightedSparseCategoricalCrossEntropyDETR(
-            n_classes=n_classes, no_class_weight=no_class_weight, reduction=tf.keras.losses.Reduction.NONE)
-        self.l1_loss = L1Loss2(reduction=tf.keras.losses.Reduction.NONE)
-        self.giou_loss = GIoULoss2(reduction=tf.keras.losses.Reduction.NONE)
+        self.n_classes = n_classes
+        self.no_class_weight = no_class_weight
+        self.mask_value = mask_value
+        self.sequence_input = sequence_input
+        self.sum_losses = sum_losses
+
+        # self.weighted_cross_entropy_loss = WeightedSparseCategoricalCrossEntropyDETR(
+        #     n_classes=n_classes, no_class_weight=no_class_weight, reduction=tf.keras.losses.Reduction.NONE)
+        self.ce_loss_fn = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True,
+                                                                        reduction=tf.keras.losses.Reduction.NONE)
+        self.class_weights = tf.concat([tf.ones(self.n_classes, dtype=tf.float32),
+                                        tf.constant([self.no_class_weight], dtype=tf.float32)],
+                                       axis=0)
+        self.l1_loss_fn = L1Loss2(reduction=tf.keras.losses.Reduction.NONE)
+        self.giou_loss_fn = GIoULoss2(reduction=tf.keras.losses.Reduction.NONE)
         self.lsa_losses = [pairwise_sparse_softmax, pairwise_l1, pairwise_giou]
 
         self.loss_weights = loss_weights
@@ -34,12 +45,6 @@ class HungarianLoss(tf.keras.losses.Loss):
         self.lsa_loss_weights = lsa_loss_weights
         if self.lsa_loss_weights is None:
             self.lsa_loss_weights = [1, 1, 1]
-
-        self.n_classes = n_classes
-        self.no_class_weight = no_class_weight
-        self.mask_value = mask_value
-        self.sequence_input = sequence_input
-        self.sum_losses = sum_losses
 
         if sequence_input:
             self.input_signature = [tf.TensorSpec(shape=(None, None, 5), dtype=tf.float32),
@@ -61,11 +66,20 @@ class HungarianLoss(tf.keras.losses.Loss):
 
         if self.sequence_input:
             tf.assert_rank(y_pred, 4, "Invalid input shape.")
+            batch_size = tf.shape(y_pred)[0]
             seq_len = tf.shape(y_pred)[1]
             n_preds = tf.shape(y_pred)[2]
             pred_dim = tf.shape(y_pred)[3]
+            batch_size_flat = batch_size * seq_len
+
             y_true = tf.repeat(y_true, seq_len, axis=0)
             y_pred = tf.reshape(y_pred, [-1, n_preds, pred_dim])
+        else:
+            batch_size = tf.shape(y_pred)[0]
+            seq_len = None
+            n_preds = tf.shape(y_pred)[1]
+            pred_dim = tf.shape(y_pred)[2]
+            batch_size_flat = batch_size
 
         batch_mask = self._get_batch_mask(y_true)
         cost_matrix = self._compute_cost_matrix(y_true, y_pred, batch_mask)
@@ -76,30 +90,14 @@ class HungarianLoss(tf.keras.losses.Loss):
             if self.sum_losses:
                 return np.nan
             else:
-                return np.nan, np.nan, np.nan
+                return [np.nan, np.nan, np.nan]
 
         if tf.reduce_any(nan_matrices):
             # remove matrices that are nan.
             cost_matrix, batch_mask = self._remove_nan_cost_matrix(nan_matrices, cost_matrix, batch_mask)
 
-        lsa = batch_linear_sum_assignment_ragged(cost_matrix)  # [total_n_true, 2]
+        lsa = batch_linear_sum_assignment_ragged(cost_matrix)
         y_pred_idx, y_true_idx = lsa_to_batch_indices(lsa, batch_mask)
-
-        losses = self._compute_losses(y_true, y_pred, y_true_idx, y_pred_idx)
-
-        if self.sum_losses:
-            losses = tf.reduce_sum(losses)
-
-        return losses
-
-    def _compute_losses(self, y_true, y_pred, y_true_idx, y_pred_idx):
-        """
-        :param y_true: [batch_size, max_n_true, 5]
-        :param y_pred: [batch_size, n_pred, 4 + n_classes]
-        :return:
-        """
-
-        # ([n_true_boxes, 2], [n_true_boxes, 2])
 
         y_true_lsa = tf.gather_nd(y_true, y_true_idx)
         y_pred_lsa = tf.gather_nd(y_pred, y_pred_idx)
@@ -109,18 +107,57 @@ class HungarianLoss(tf.keras.losses.Loss):
         y_pred_boxes_lsa = y_pred_lsa[..., :4]
         y_pred_logits = y_pred[..., 4:]
 
-        batch_size = tf.shape(y_true)[0]
-        n_pred_boxes = tf.shape(y_pred)[1]
-        n_class = tf.shape(y_pred)[2] - 4
-        no_class_labels = tf.cast(tf.fill([batch_size, n_pred_boxes], n_class - 1), tf.float32)
-        y_true_labels_lsa = tf.tensor_scatter_nd_update(no_class_labels, y_pred_idx,
-                                                        y_true_labels_lsa)  # [batch_size, n_pred]
+        n_class = pred_dim - 4
+        no_class_labels = tf.cast(tf.fill([batch_size_flat, n_preds], n_class - 1), tf.float32)
+        y_true_labels_lsa = tf.tensor_scatter_nd_update(no_class_labels, y_pred_idx, y_true_labels_lsa)
 
-        loss_ce = self.weighted_cross_entropy_loss(y_true_labels_lsa, y_pred_logits) * self.cross_ent_weight
-        loss_l1 = self.l1_loss(y_true_boxes_lsa, y_pred_boxes_lsa) * self.l1_weight
-        loss_giou = self.giou_loss(y_true_boxes_lsa, y_pred_boxes_lsa) * self.giou_weight
+        # compute cross-entropy loss
+        loss_ce = self.ce_loss_fn(y_true_labels_lsa, y_pred_logits) * self.cross_ent_weight
+        weights_ce = self._compute_ce_weights(y_true_labels_lsa)
+        loss_ce = loss_ce * weights_ce
 
-        return loss_ce, loss_l1, loss_giou
+        # compute bbox l1 loss
+        loss_l1 = self.l1_loss_fn(y_true_boxes_lsa, y_pred_boxes_lsa) * self.l1_weight
+
+        # compute bbox giou loss
+        loss_giou = self.giou_loss_fn(y_true_boxes_lsa, y_pred_boxes_lsa) * self.giou_weight
+
+        if self.sequence_input:
+            sizes = tf.reduce_sum(tf.cast(batch_mask, tf.int32), axis=1)
+            seq_indices = tf.range(batch_size * seq_len)
+            seq_indices = tf.transpose(tf.reshape(seq_indices, [batch_size, -1]))
+
+            loss_ce = tf.gather(loss_ce, seq_indices)
+            weights_ce = tf.gather(weights_ce, seq_indices)
+
+            loss_l1 = tf.RaggedTensor.from_row_lengths(loss_l1, sizes)
+            loss_l1 = tf.gather(loss_l1, seq_indices)
+            loss_l1 = loss_l1.merge_dims(1, 2)
+
+            loss_giou = tf.RaggedTensor.from_row_lengths(loss_giou, sizes)
+            loss_giou = tf.gather(loss_giou, seq_indices)
+            loss_giou = loss_giou.merge_dims(1, 2)
+
+            loss_l1 = tf.reduce_mean(loss_l1, axis=1)
+            loss_giou = tf.reduce_mean(loss_giou, axis=1)
+        else:
+            loss_l1 = tf.reduce_mean(loss_l1, axis=0)
+            loss_giou = tf.reduce_mean(loss_giou, axis=0)
+
+        loss_ce = tf.reduce_sum(loss_ce, axis=(-2, -1)) / tf.reduce_sum(weights_ce, axis=(-2, -1))
+
+        losses = [loss_ce, loss_l1, loss_giou]
+
+        if self.sum_losses:
+            losses = tf.reduce_sum(losses)
+
+        return losses
+
+    def _compute_ce_weights(self, y_true):
+        y_true_1hot = tf.one_hot(tf.cast(y_true, tf.int32), depth=self.n_classes + 1)  # +1 for "no object" class
+        weights = self.class_weights * y_true_1hot  # multiply weights with target class distribution
+        weights = tf.reduce_sum(weights, axis=-1)
+        return weights
 
     def _compute_cost_matrix(self, y_true, y_pred, batch_mask):
         cost_matrix = tf.math.add_n([loss_fn(y_true, y_pred) * loss_weight
@@ -159,34 +196,6 @@ class HungarianLoss(tf.keras.losses.Loss):
                   "lsa_loss_weights": self.lsa_loss_weights, "no_class_weight": self.no_class_weight,
                   "mask_value": self.mask_value, "sequence_input": self.sequence_input, "sum_losses": self.sum_losses}
         base_config = super(HungarianLoss, self).get_config()
-        return dict(list(base_config.items()) + list(config.items()))
-
-
-class WeightedSparseCategoricalCrossEntropyDETR(tf.keras.losses.Loss):
-    def __init__(self, n_classes, no_class_weight=0.1, reduction=tf.keras.losses.Reduction.AUTO,
-                 name="weighted_sparse_categorical_cross_entropy"):
-        super().__init__(reduction=reduction, name=name)
-        self.no_class_weight = no_class_weight
-        self.n_classes = n_classes
-        class_weights = tf.concat([tf.ones(self.n_classes, dtype=tf.float32),
-                                   tf.constant([self.no_class_weight], dtype=tf.float32)],
-                                  axis=0)
-        self.class_weights = class_weights
-
-    def call(self, y_true, y_pred):
-        y_true = tf.one_hot(tf.cast(y_true, tf.int32), depth=self.n_classes + 1)  # +1 for "no object" class
-
-        weights = self.class_weights * y_true
-        weights = tf.reduce_sum(weights, axis=-1)
-
-        loss_ce = tf.keras.losses.categorical_crossentropy(y_true, y_pred, from_logits=True)
-        loss_ce = loss_ce * weights
-        loss_ce = tf.reduce_sum(loss_ce, axis=-1) / tf.reduce_sum(weights)
-        return loss_ce
-
-    def get_config(self):
-        config = {"n_classes": self.n_classes, "no_class_weight": self.no_class_weight}
-        base_config = super(WeightedSparseCategoricalCrossEntropyDETR, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
 
 

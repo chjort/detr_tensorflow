@@ -66,14 +66,14 @@ hungarian = HungarianLoss(n_classes=91,
 y_true, y_pred = load_samples()
 loss = hungarian(y_true, y_pred)
 
-hungarian(y_true, y_pred)  # warmup
-times = []
-for i in range(200):
-    st = time.time()
-    hungarian(y_true, y_pred)
-    end_time = time.time() - st
-    times.append(end_time)
-print(np.mean(times))  # 0.006240495443344116
+# hungarian(y_true, y_pred)  # warmup
+# times = []
+# for i in range(200):
+#     st = time.time()
+#     hungarian(y_true, y_pred)
+#     end_time = time.time() - st
+#     times.append(end_time)
+# print(np.mean(times))  # 0.006532610654830933
 
 # with sequence
 hungarian = HungarianLoss(n_classes=91,
@@ -84,16 +84,16 @@ hungarian = HungarianLoss(n_classes=91,
 y_true, y_pred = load_samples(as_sequence=True)
 seq_loss = hungarian(y_true, y_pred)
 
-hungarian(y_true, y_pred)  # warmup
-times = []
-for i in range(200):
-    st = time.time()
-    hungarian(y_true, y_pred)
-    end_time = time.time() - st
-    times.append(end_time)
-print(np.mean(times))  # 0.03912675142288208
+# hungarian(y_true, y_pred)  # warmup
+# times = []
+# for i in range(200):
+#     st = time.time()
+#     hungarian(y_true, y_pred)
+#     end_time = time.time() - st
+#     times.append(end_time)
+# print(np.mean(times))  # 0.020411419868469238
 
 print(loss)
 print(seq_loss)
-tf.assert_equal(loss, 1.4096249)  # YXYX
-# tf.assert_equal(seq_loss, 8.68166)  # YXYX
+tf.assert_equal(loss, 1.409625)
+tf.assert_equal(seq_loss, 8.68166)
