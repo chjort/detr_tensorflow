@@ -173,6 +173,7 @@ def compute_loss(y_true, y_pred):
 
 # %%
 loss = compute_loss(y_true, y_pred)
+tf.stack(loss, axis=1)
 tf.reduce_sum(loss)
 # 1.4096249
 # 8.68166

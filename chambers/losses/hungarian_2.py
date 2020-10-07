@@ -25,16 +25,15 @@ class HungarianLoss(tf.keras.losses.Loss):
         self.sequence_input = sequence_input
         self.sum_losses = sum_losses
 
-        # self.weighted_cross_entropy_loss = WeightedSparseCategoricalCrossEntropyDETR(
-        #     n_classes=n_classes, no_class_weight=no_class_weight, reduction=tf.keras.losses.Reduction.NONE)
         self.ce_loss_fn = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True,
                                                                         reduction=tf.keras.losses.Reduction.NONE)
-        self.class_weights = tf.concat([tf.ones(self.n_classes, dtype=tf.float32),
-                                        tf.constant([self.no_class_weight], dtype=tf.float32)],
-                                       axis=0)
         self.l1_loss_fn = L1Loss2(reduction=tf.keras.losses.Reduction.NONE)
         self.giou_loss_fn = GIoULoss2(reduction=tf.keras.losses.Reduction.NONE)
         self.lsa_losses = [pairwise_sparse_softmax, pairwise_l1, pairwise_giou]
+
+        self.class_weights = tf.concat([tf.ones(self.n_classes, dtype=tf.float32),
+                                        tf.constant([self.no_class_weight], dtype=tf.float32)],
+                                       axis=0)
 
         self.loss_weights = loss_weights
         if self.loss_weights is None:
@@ -68,32 +67,32 @@ class HungarianLoss(tf.keras.losses.Loss):
             tf.assert_rank(y_pred, 4, "Invalid input shape.")
             batch_size = tf.shape(y_pred)[0]
             seq_len = tf.shape(y_pred)[1]
-            n_preds = tf.shape(y_pred)[2]
+            n_pred_boxes = tf.shape(y_pred)[2]
             pred_dim = tf.shape(y_pred)[3]
             batch_size_flat = batch_size * seq_len
 
             y_true = tf.repeat(y_true, seq_len, axis=0)
-            y_pred = tf.reshape(y_pred, [-1, n_preds, pred_dim])
+            y_pred = tf.reshape(y_pred, [-1, n_pred_boxes, pred_dim])
         else:
             batch_size = tf.shape(y_pred)[0]
             seq_len = None
-            n_preds = tf.shape(y_pred)[1]
+            n_pred_boxes = tf.shape(y_pred)[1]
             pred_dim = tf.shape(y_pred)[2]
             batch_size_flat = batch_size
 
         batch_mask = self._get_batch_mask(y_true)
         cost_matrix = self._compute_cost_matrix(y_true, y_pred, batch_mask)
 
+        # handle nan in cost matrix (nan can occur from the softmax function used in one of the pairwise losses)
         nan_matrices = tf.reduce_all(tf.math.is_nan(cost_matrix), axis=(1, 2))
         if tf.reduce_all(nan_matrices):
-            # Ignore cost matrices that are all NaN.
+            # if all cost matrices are nan, return nan.
             if self.sum_losses:
                 return np.nan
             else:
                 return [np.nan, np.nan, np.nan]
-
         if tf.reduce_any(nan_matrices):
-            # remove matrices that are nan.
+            # remove any matrices that are nan.
             cost_matrix, batch_mask = self._remove_nan_cost_matrix(nan_matrices, cost_matrix, batch_mask)
 
         lsa = batch_linear_sum_assignment_ragged(cost_matrix)
@@ -108,7 +107,7 @@ class HungarianLoss(tf.keras.losses.Loss):
         y_pred_logits = y_pred[..., 4:]
 
         n_class = pred_dim - 4
-        no_class_labels = tf.cast(tf.fill([batch_size_flat, n_preds], n_class - 1), tf.float32)
+        no_class_labels = tf.cast(tf.fill([batch_size_flat, n_pred_boxes], n_class - 1), tf.float32)
         y_true_labels_lsa = tf.tensor_scatter_nd_update(no_class_labels, y_pred_idx, y_true_labels_lsa)
 
         # compute cross-entropy loss
@@ -131,12 +130,12 @@ class HungarianLoss(tf.keras.losses.Loss):
             weights_ce = tf.gather(weights_ce, seq_indices)
 
             loss_l1 = tf.RaggedTensor.from_row_lengths(loss_l1, sizes)
-            loss_l1 = tf.gather(loss_l1, seq_indices)
-            loss_l1 = loss_l1.merge_dims(1, 2)
+            loss_l1 = tf.gather(loss_l1, seq_indices)  # this gives warning
+            loss_l1 = loss_l1.merge_dims(1, 2).to_tensor()
 
             loss_giou = tf.RaggedTensor.from_row_lengths(loss_giou, sizes)
-            loss_giou = tf.gather(loss_giou, seq_indices)
-            loss_giou = loss_giou.merge_dims(1, 2)
+            loss_giou = tf.gather(loss_giou, seq_indices)  # this gives warning
+            loss_giou = loss_giou.merge_dims(1, 2).to_tensor()
 
             loss_l1 = tf.reduce_mean(loss_l1, axis=1)
             loss_giou = tf.reduce_mean(loss_giou, axis=1)
@@ -160,9 +159,10 @@ class HungarianLoss(tf.keras.losses.Loss):
         return weights
 
     def _compute_cost_matrix(self, y_true, y_pred, batch_mask):
-        cost_matrix = tf.math.add_n([loss_fn(y_true, y_pred) * loss_weight
-                                     for loss_fn, loss_weight in zip(self.lsa_losses, self.lsa_loss_weights)])
+        cost_losses = [loss_fn(y_true, y_pred) * loss_weight for loss_fn, loss_weight in
+                       zip(self.lsa_losses, self.lsa_loss_weights)]
 
+        cost_matrix = tf.math.add_n(cost_losses)
         cost_matrix_mask = self._compute_cost_matrix_mask(cost_matrix, batch_mask)
         cost_matrix_ragged = tf.ragged.boolean_mask(cost_matrix, cost_matrix_mask)
 
