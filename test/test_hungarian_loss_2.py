@@ -4,7 +4,7 @@ import time
 import numpy as np
 import tensorflow as tf
 
-from chambers.losses.hungarian_2 import HungarianLoss
+from chambers.losses.hungarian import HungarianLoss
 from chambers.utils.boxes import box_cxcywh_to_yxyx
 
 
@@ -66,14 +66,14 @@ hungarian = HungarianLoss(n_classes=91,
 y_true, y_pred = load_samples()
 loss = hungarian(y_true, y_pred)
 
-# hungarian(y_true, y_pred)  # warmup
-# times = []
-# for i in range(200):
-#     st = time.time()
-#     hungarian(y_true, y_pred)
-#     end_time = time.time() - st
-#     times.append(end_time)
-# print(np.mean(times))  # 0.006532610654830933
+hungarian(y_true, y_pred)  # warmup
+times = []
+for i in range(200):
+    st = time.time()
+    hungarian(y_true, y_pred)
+    end_time = time.time() - st
+    times.append(end_time)
+print(np.mean(times))  # 0.006532610654830933
 
 # with sequence
 hungarian = HungarianLoss(n_classes=91,
@@ -84,14 +84,14 @@ hungarian = HungarianLoss(n_classes=91,
 y_true, y_pred = load_samples(as_sequence=True)
 seq_loss = hungarian(y_true, y_pred)
 
-# hungarian(y_true, y_pred)  # warmup
-# times = []
-# for i in range(200):
-#     st = time.time()
-#     hungarian(y_true, y_pred)
-#     end_time = time.time() - st
-#     times.append(end_time)
-# print(np.mean(times))  # 0.020411419868469238
+hungarian(y_true, y_pred)  # warmup
+times = []
+for i in range(200):
+    st = time.time()
+    hungarian(y_true, y_pred)
+    end_time = time.time() - st
+    times.append(end_time)
+print(np.mean(times))  # 0.020411419868469238
 
 print(loss)
 print(seq_loss)
