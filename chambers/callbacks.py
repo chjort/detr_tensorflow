@@ -167,22 +167,21 @@ class HungarianLossLogger(tf.keras.callbacks.Callback):
         losses = [self.hungarian(yt, yp) for yt, yp in zip(self.y_true, y_pred)]
 
         # TODO: Handle new optimized loss
-        # total_losses = [tf.reduce_sum(loss) for loss in losses]
-        # val_loss = tf.reduce_mean(total_losses)
-        # logs["val_loss"] = val_loss.numpy()
+        total_losses = [tf.reduce_sum(loss) for loss in losses]
+        val_loss = tf.reduce_mean(total_losses)
+        logs["val_loss"] = val_loss.numpy()
 
-        losses = tf.reduce_mean(losses, axis=0).numpy()  # TODO: This is wrong
-        logs["val_loss"] = losses.sum()  # TODO: Remove
+        losses = tf.reduce_mean(losses, axis=0).numpy()
 
         # the loss of the last decoder layer. (The actual predictions)
-        losses_last = losses[-1]
+        losses_last = losses[:, -1]
         for loss, name in zip(losses_last, self.loss_names):
             log_name = "val_{}".format(name)
             logs[log_name] = loss
 
         # the losses of the preceding decoder layers (auxiliary losses).
         for i in range(losses.shape[0] - 1):
-            losses_i = losses[i]
+            losses_i = losses[:, i]
             for loss, name in zip(losses_i, self.loss_names):
                 log_name = "val_{}_{}".format(name, i)
                 logs[log_name] = loss
