@@ -5,22 +5,11 @@ import tensorflow as tf
 import tensorflow_addons as tfa
 
 from chambers.callbacks import DETRLossDiffLogger, HungarianLossLogger, DETRPredImageTensorboard, GroupedTensorBoard
-from chambers.losses import HungarianLoss
-from chambers.models.detr import DETR, load_detr
+from chambers.losses.hungarian import HungarianLoss
+from chambers.models.detr import DETR
 from chambers.optimizers import LearningRateMultiplier
 from chambers.utils.utils import timestamp_now
 from data.tf_datasets import load_coco_tf, CLASSES_TF
-
-
-# def loss_placeholder(y_true, y_pred):
-#     y_true_labels = y_true[..., -1]  # [1]
-#     y_pred_logits = y_pred[..., 4:]  # [1]
-#
-#     y_pred = y_pred_logits[:, -1, :1]
-#     y_true = y_true_labels[:, :1]
-#
-#     return tf.keras.losses.sparse_categorical_crossentropy(y_true, y_pred, from_logits=True)
-
 
 # model_path = "outputs/2020-10-04_19-19-45/checkpoints/model-init.h5"
 model_path = None
@@ -127,43 +116,43 @@ print("Training steps per epoch:", STEPS_PER_EPOCH)
 print("Validation steps per epoch:", VAL_STEPS_PER_EPOCH)
 
 # make output folders and paths
-# model_dir = os.path.join("outputs", timestamp_now())
-# checkpoint_dir = os.path.join(model_dir, "checkpoints")
-# log_dir = os.path.join(model_dir, "logs")
-# os.makedirs(checkpoint_dir, exist_ok=True)
-# os.makedirs(log_dir, exist_ok=True)
-# checkpoint_path = os.path.join(checkpoint_dir, "model-epoch{epoch}.h5")
-# csv_path = os.path.join(log_dir, "logs.csv")
-# tensorboard_path = os.path.join(log_dir, "tb")
+model_dir = os.path.join("outputs", timestamp_now())
+checkpoint_dir = os.path.join(model_dir, "checkpoints")
+log_dir = os.path.join(model_dir, "logs")
+os.makedirs(checkpoint_dir, exist_ok=True)
+os.makedirs(log_dir, exist_ok=True)
+checkpoint_path = os.path.join(checkpoint_dir, "model-epoch{epoch}.h5")
+csv_path = os.path.join(log_dir, "logs.csv")
+tensorboard_path = os.path.join(log_dir, "tb")
 
 # create callbacks
 callbacks = [
-    # HungarianLossLogger(val_dataset, steps=VAL_STEPS_PER_EPOCH),
-    # DETRLossDiffLogger("samples/fb_log.txt"),
-    # tf.keras.callbacks.CSVLogger(csv_path),
-    # GroupedTensorBoard(loss_groups=["val_loss_ce", "val_loss_l1", "val_loss_giou"],
-    #                    writer_prefixes="decode_layer",
-    #                    log_dir=tensorboard_path,
-    #                    write_graph=True,
-    #                    update_freq="epoch",
-    #                    profile_batch=0),
-    # DETRPredImageTensorboard(log_dir=tensorboard_path,
-    #                          min_prob=(0.0, 0.1, 0.5, 0.7),
-    #                          image_files=["samples/sample0.jpg",
-    #                                       "samples/sample1.png",
-    #                                       "samples/sample2.jpg"
-    #                                       ],
-    #                          label_names=CLASSES_TF
-    #                          ),
-    # tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
-    #                                    monitor="val_loss",
-    #                                    save_best_only=False,
-    #                                    save_weights_only=False
-    #                                    )
+    HungarianLossLogger(val_dataset, steps=VAL_STEPS_PER_EPOCH),
+    DETRLossDiffLogger("samples/fb_log.txt"),
+    tf.keras.callbacks.CSVLogger(csv_path),
+    GroupedTensorBoard(loss_groups=["val_loss_ce", "val_loss_l1", "val_loss_giou"],
+                       writer_prefixes="decode_layer",
+                       log_dir=tensorboard_path,
+                       write_graph=True,
+                       update_freq="epoch",
+                       profile_batch=0),
+    DETRPredImageTensorboard(log_dir=tensorboard_path,
+                             min_prob=(0.0, 0.1, 0.5, 0.7),
+                             image_files=["samples/sample0.jpg",
+                                          "samples/sample1.png",
+                                          "samples/sample2.jpg"
+                                          ],
+                             label_names=CLASSES_TF
+                             ),
+    tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
+                                       monitor="val_loss",
+                                       save_best_only=False,
+                                       save_weights_only=False
+                                       )
 ]
 
 # fit
-# detr.save(os.path.join(checkpoint_dir, "model-init.h5"))  # save initialization
+detr.save(os.path.join(checkpoint_dir, "model-init.h5"))  # save initialization
 history = detr.fit(train_dataset,
                    epochs=EPOCHS,
                    steps_per_epoch=STEPS_PER_EPOCH,

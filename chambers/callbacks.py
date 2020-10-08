@@ -4,7 +4,7 @@ from collections.abc import Iterable
 
 import tensorflow as tf
 
-from chambers.losses.hungarian_2 import HungarianLoss as _HungarianLoss
+from chambers.losses.hungarian import HungarianLoss as _HungarianLoss
 from chambers.models.detr import post_process
 from chambers.utils.image import read_image, resnet_imagenet_normalize
 from chambers.utils.utils import plot_results
@@ -180,7 +180,7 @@ class HungarianLossLogger(tf.keras.callbacks.Callback):
             logs[log_name] = loss
 
         # the losses of the preceding decoder layers (auxiliary losses).
-        for i in range(losses.shape[0] - 1):
+        for i in range(losses.shape[1] - 1):
             losses_i = losses[:, i]
             for loss, name in zip(losses_i, self.loss_names):
                 log_name = "val_{}_{}".format(name, i)
