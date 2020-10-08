@@ -5,22 +5,11 @@ import tensorflow as tf
 import tensorflow_addons as tfa
 
 from chambers.callbacks import DETRLossDiffLogger, HungarianLossLogger, DETRPredImageTensorboard, GroupedTensorBoard
-from chambers.losses import HungarianLoss
-from chambers.models.detr import DETR, load_detr
+from chambers.losses.hungarian import HungarianLoss
+from chambers.models.detr import DETR
 from chambers.optimizers import LearningRateMultiplier
 from chambers.utils.utils import timestamp_now
 from data.tf_datasets import load_coco_tf, CLASSES_TF
-
-
-# def loss_placeholder(y_true, y_pred):
-#     y_true_labels = y_true[..., -1]  # [1]
-#     y_pred_logits = y_pred[..., 4:]  # [1]
-#
-#     y_pred = y_pred_logits[:, -1, :1]
-#     y_true = y_true_labels[:, :1]
-#
-#     return tf.keras.losses.sparse_categorical_crossentropy(y_true, y_pred, from_logits=True)
-
 
 # model_path = "outputs/2020-10-04_19-19-45/checkpoints/model-init.h5"
 model_path = None
@@ -114,9 +103,9 @@ detr.summary()
 
 # set training configuration
 print("\n### TRAINING ###")
-EPOCHS = 50  # 150
-# n_train = 416
-# n_val = 416
+EPOCHS = 10  # 150
+n_train = 416
+n_val = 416
 STEPS_PER_EPOCH = n_train // GLOBAL_BATCH_SIZE
 VAL_STEPS_PER_EPOCH = n_val // GLOBAL_BATCH_SIZE
 

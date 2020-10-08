@@ -4,7 +4,7 @@ import time
 import numpy as np
 import tensorflow as tf
 
-from chambers.losses import HungarianLoss
+from chambers.losses.hungarian import HungarianLoss
 from chambers.utils.boxes import box_cxcywh_to_yxyx
 
 
@@ -73,7 +73,7 @@ for i in range(200):
     hungarian(y_true, y_pred)
     end_time = time.time() - st
     times.append(end_time)
-print(np.mean(times))  # 0.006240495443344116
+print(np.mean(times))  # 0.006532610654830933
 
 # with sequence
 hungarian = HungarianLoss(n_classes=91,
@@ -91,37 +91,9 @@ for i in range(200):
     hungarian(y_true, y_pred)
     end_time = time.time() - st
     times.append(end_time)
-print(np.mean(times))  # 0.03912675142288208
+print(np.mean(times))  # 0.01863012194633484
 
 print(loss)
 print(seq_loss)
-# tf.assert_equal(loss, 1.4204133)  # CXCYWH
-tf.assert_equal(loss, 1.4096249)  # YXYX
-# tf.assert_equal(seq_loss, 8.831283)  # CXCYWH
-tf.assert_equal(seq_loss, 8.68166)  # YXYX
-
-""" YXYX
-no sequence
-0.499324858 0.160567492 0.749732733
-
-sequence
-0.524171472 0.231220722 0.824334681
-0.543324888 0.178310558 0.770565
-0.466288716 0.16810821 0.760944486
-0.491716951 0.166256934 0.759887755
-0.486429334 0.158029228 0.742445886
-0.499324858 0.160567492 0.749732733
-"""
-
-""" CXCYWH
-no sequence
-0.499324858 0.171355724 0.749732733
-
-sequence
-0.517344832 0.269919425 0.830612898
-0.548208714 0.194526181 0.767995834
-0.466288716 0.18378076 0.760944486
-0.547239721 0.166093722 0.760088205
-0.486429334 0.168950379 0.742445886
-0.499324858 0.171355724 0.749732733
-"""
+tf.assert_equal(loss, 1.409625)
+tf.assert_equal(seq_loss, 8.68166)

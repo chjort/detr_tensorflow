@@ -4,3 +4,4 @@ numpy
 git+https://github.com/cocodataset/cocoapi.git#subdirectory=PythonAPI
 tensorflow-addons
 tensorflow-datasets
+scipy
