@@ -150,20 +150,29 @@ losses = [loss_ce, loss_l1, loss_giou]
 
 # %%
 data = y_true_idx[:,0] # TODO: find indices for values (0, 6), (1, 7), (2, 8), ..., (5, 11) in `data`
+data
 # data = raw_l1
+data_idx = tf.range(tf.shape(data)[0])
+n_trues_per_batch = tf.constant([2, 24])
+
+data_idx
 n_trues_per_seq
+n_trues_per_batch
+n_trues_per_batch * seq_len
 seq_indices
 
+tf.stack([data_idx, data], axis=1)
+n_trues_per_batch
+tf.range(12, 36) + 24*2
+batch_mask
+
+tf.constant([0, 1])[:, None] + tf.range(seq_len) * 2
+tf.constant([12, 36])[:, None] + tf.range(seq_len) * 24
 
 # index_masks = tf.cast(tf.equal(data, tf.expand_dims(seq_indices, -1)), dtype=tf.int32)
 # index_masks = tf.cast(tf.reduce_sum(index_masks, axis=1), tf.bool)
 # data = tf.tile(tf.expand_dims(data, 0), [seq_len, 1])
 # tf.ragged.boolean_mask(data, index_masks).to_tensor()
-
-n_trues_per_seq
-tf.range(tf.shape(data))
-
-seq_indices
 
 # tf.equal(tf.expand_dims(data, 1), tf.expand_dims(tf.range(seq_len*2), 0))
 
@@ -190,89 +199,89 @@ seq_indices
 # losses_h1 = hl(y_true, y_pred)
 
 # %%
-if seq:
-    input_signature = [tf.TensorSpec(shape=(None, None, 5), dtype=tf.float32),
-                       tf.TensorSpec(shape=(None, None, None, None), dtype=tf.float32)]
-else:
-    input_signature = [tf.TensorSpec(shape=(None, None, 5), dtype=tf.float32),
-                       tf.TensorSpec(shape=(None, None, None), dtype=tf.float32)]
-
-
-@tf.function(input_signature=input_signature)
-def compute_loss(y_true, y_pred):
-    if hungarian.sequence_input:
-        tf.assert_rank(y_pred, 4, "Invalid input shape.")
-        batch_size = tf.shape(y_pred)[0]
-        seq_len = tf.shape(y_pred)[1]
-        n_preds = tf.shape(y_pred)[2]
-        pred_dim = tf.shape(y_pred)[3]
-        batch_size_flat = batch_size * seq_len
-
-        y_true = tf.repeat(y_true, seq_len, axis=0)
-        y_pred = tf.reshape(y_pred, [-1, n_preds, pred_dim])
-    else:
-        batch_size = tf.shape(y_pred)[0]
-        seq_len = None
-        n_preds = tf.shape(y_pred)[1]
-        pred_dim = tf.shape(y_pred)[2]
-        batch_size_flat = batch_size
-
-    batch_mask = hungarian._get_batch_mask(y_true)
-    cost_matrix = hungarian._compute_cost_matrix(y_true, y_pred, batch_mask)
-
-    lsa = batch_linear_sum_assignment_ragged(cost_matrix)
-    y_pred_idx, y_true_idx = lsa_to_batch_indices(lsa, batch_mask)
-
-    y_true_lsa = tf.gather_nd(y_true, y_true_idx)
-    y_pred_lsa = tf.gather_nd(y_pred, y_pred_idx)
-
-    y_true_boxes_lsa = y_true_lsa[..., :-1]
-    y_true_labels_lsa = y_true_lsa[..., -1]
-    y_pred_boxes_lsa = y_pred_lsa[..., :4]
-    y_pred_logits = y_pred[..., 4:]
-
-    n_class = pred_dim - 4
-    no_class_labels = tf.cast(tf.fill([batch_size_flat, n_preds], n_class - 1), tf.float32)
-    y_true_labels_lsa = tf.tensor_scatter_nd_update(no_class_labels, y_pred_idx, y_true_labels_lsa)
-
-    # compute cross-entropy loss
-    loss_ce = hungarian.ce_loss_fn(y_true_labels_lsa, y_pred_logits) * hungarian.cross_ent_weight
-    weights_ce = hungarian._compute_ce_weights(y_true_labels_lsa)
-    loss_ce = loss_ce * weights_ce
-
-    # compute bbox l1 loss
-    loss_l1 = hungarian.l1_loss_fn(y_true_boxes_lsa, y_pred_boxes_lsa) * hungarian.l1_weight
-
-    # compute bbox giou loss
-    loss_giou = hungarian.giou_loss_fn(y_true_boxes_lsa, y_pred_boxes_lsa) * hungarian.giou_weight
-
-    if hungarian.sequence_input:
-        sizes = tf.reduce_sum(tf.cast(batch_mask, tf.int32), axis=1)
-        seq_indices = tf.range(batch_size * seq_len)
-        seq_indices = tf.transpose(tf.reshape(seq_indices, [batch_size, -1]))
-
-        loss_ce = tf.gather(loss_ce, seq_indices)
-        weights_ce = tf.gather(weights_ce, seq_indices)
-
-        loss_l1 = tf.RaggedTensor.from_row_lengths(loss_l1, sizes)
-        loss_l1 = tf.gather(loss_l1, seq_indices)
-        loss_l1 = loss_l1.merge_dims(1, 2)
-
-        loss_giou = tf.RaggedTensor.from_row_lengths(loss_giou, sizes)
-        loss_giou = tf.gather(loss_giou, seq_indices)
-        loss_giou = loss_giou.merge_dims(1, 2)
-
-        loss_l1 = tf.reduce_mean(loss_l1, axis=1)
-        loss_giou = tf.reduce_mean(loss_giou, axis=1)
-    else:
-        loss_l1 = tf.reduce_mean(loss_l1, axis=0)
-        loss_giou = tf.reduce_mean(loss_giou, axis=0)
-
-    loss_ce = tf.reduce_sum(loss_ce, axis=(-2, -1)) / tf.reduce_sum(weights_ce, axis=(-2, -1))
-
-    losses = [loss_ce, loss_l1, loss_giou]
-
-    return losses
+# if seq:
+#     input_signature = [tf.TensorSpec(shape=(None, None, 5), dtype=tf.float32),
+#                        tf.TensorSpec(shape=(None, None, None, None), dtype=tf.float32)]
+# else:
+#     input_signature = [tf.TensorSpec(shape=(None, None, 5), dtype=tf.float32),
+#                        tf.TensorSpec(shape=(None, None, None), dtype=tf.float32)]
+#
+#
+# @tf.function(input_signature=input_signature)
+# def compute_loss(y_true, y_pred):
+#     if hungarian.sequence_input:
+#         tf.assert_rank(y_pred, 4, "Invalid input shape.")
+#         batch_size = tf.shape(y_pred)[0]
+#         seq_len = tf.shape(y_pred)[1]
+#         n_preds = tf.shape(y_pred)[2]
+#         pred_dim = tf.shape(y_pred)[3]
+#         batch_size_flat = batch_size * seq_len
+#
+#         y_true = tf.repeat(y_true, seq_len, axis=0)
+#         y_pred = tf.reshape(y_pred, [-1, n_preds, pred_dim])
+#     else:
+#         batch_size = tf.shape(y_pred)[0]
+#         seq_len = None
+#         n_preds = tf.shape(y_pred)[1]
+#         pred_dim = tf.shape(y_pred)[2]
+#         batch_size_flat = batch_size
+#
+#     batch_mask = hungarian._get_batch_mask(y_true)
+#     cost_matrix = hungarian._compute_cost_matrix(y_true, y_pred, batch_mask)
+#
+#     lsa = batch_linear_sum_assignment_ragged(cost_matrix)
+#     y_pred_idx, y_true_idx = lsa_to_batch_indices(lsa, batch_mask)
+#
+#     y_true_lsa = tf.gather_nd(y_true, y_true_idx)
+#     y_pred_lsa = tf.gather_nd(y_pred, y_pred_idx)
+#
+#     y_true_boxes_lsa = y_true_lsa[..., :-1]
+#     y_true_labels_lsa = y_true_lsa[..., -1]
+#     y_pred_boxes_lsa = y_pred_lsa[..., :4]
+#     y_pred_logits = y_pred[..., 4:]
+#
+#     n_class = pred_dim - 4
+#     no_class_labels = tf.cast(tf.fill([batch_size_flat, n_preds], n_class - 1), tf.float32)
+#     y_true_labels_lsa = tf.tensor_scatter_nd_update(no_class_labels, y_pred_idx, y_true_labels_lsa)
+#
+#     # compute cross-entropy loss
+#     loss_ce = hungarian.ce_loss_fn(y_true_labels_lsa, y_pred_logits) * hungarian.cross_ent_weight
+#     weights_ce = hungarian._compute_ce_weights(y_true_labels_lsa)
+#     loss_ce = loss_ce * weights_ce
+#
+#     # compute bbox l1 loss
+#     loss_l1 = hungarian.l1_loss_fn(y_true_boxes_lsa, y_pred_boxes_lsa) * hungarian.l1_weight
+#
+#     # compute bbox giou loss
+#     loss_giou = hungarian.giou_loss_fn(y_true_boxes_lsa, y_pred_boxes_lsa) * hungarian.giou_weight
+#
+#     if hungarian.sequence_input:
+#         sizes = tf.reduce_sum(tf.cast(batch_mask, tf.int32), axis=1)
+#         seq_indices = tf.range(batch_size * seq_len)
+#         seq_indices = tf.transpose(tf.reshape(seq_indices, [batch_size, -1]))
+#
+#         loss_ce = tf.gather(loss_ce, seq_indices)
+#         weights_ce = tf.gather(weights_ce, seq_indices)
+#
+#         loss_l1 = tf.RaggedTensor.from_row_lengths(loss_l1, sizes)
+#         loss_l1 = tf.gather(loss_l1, seq_indices)
+#         loss_l1 = loss_l1.merge_dims(1, 2)
+#
+#         loss_giou = tf.RaggedTensor.from_row_lengths(loss_giou, sizes)
+#         loss_giou = tf.gather(loss_giou, seq_indices)
+#         loss_giou = loss_giou.merge_dims(1, 2)
+#
+#         loss_l1 = tf.reduce_mean(loss_l1, axis=1)
+#         loss_giou = tf.reduce_mean(loss_giou, axis=1)
+#     else:
+#         loss_l1 = tf.reduce_mean(loss_l1, axis=0)
+#         loss_giou = tf.reduce_mean(loss_giou, axis=0)
+#
+#     loss_ce = tf.reduce_sum(loss_ce, axis=(-2, -1)) / tf.reduce_sum(weights_ce, axis=(-2, -1))
+#
+#     losses = [loss_ce, loss_l1, loss_giou]
+#
+#     return losses
 
 # %%
 # loss = compute_loss(y_true, y_pred)
