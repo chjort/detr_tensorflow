@@ -1,34 +1,4 @@
 import tensorflow as tf
-import tensorflow_addons as tfa
-from tensorflow.python.keras.losses import LossFunctionWrapper
-
-
-class GIoULoss(LossFunctionWrapper):
-    def __init__(
-            self,
-            mode: str = "giou",
-            reduction: str = tf.keras.losses.Reduction.AUTO,
-            name: str = "giou_loss",
-    ):
-        super().__init__(giou_loss, name=name, reduction=reduction, mode=mode)
-
-
-class GIoULoss2(LossFunctionWrapper):
-    def __init__(
-            self,
-            mode: str = "giou",
-            reduction: str = tf.keras.losses.Reduction.AUTO,
-            name: str = "giou_loss",
-    ):
-        super().__init__(giou_loss_2, name=name, reduction=reduction, mode=mode)
-
-
-def giou_loss(y_true, y_pred, mode: str = "giou") -> tf.Tensor:
-    return tf.reduce_mean(tfa.losses.giou_loss(y_true, y_pred, mode=mode))
-
-
-def giou_loss_2(y_true, y_pred, mode: str = "giou") -> tf.Tensor:
-    return tfa.losses.giou_loss(y_true, y_pred, mode=mode)
 
 
 def _calculate_giou(b1, b2, mode: str = "giou") -> tf.Tensor:

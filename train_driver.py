@@ -1,6 +1,6 @@
 import os
 
-os.environ["TF_CUDNN_USE_AUTOTUNE"] = "0"  # TODO: Try on 8 GPUs with this setting
+os.environ["TF_CUDNN_USE_AUTOTUNE"] = "0"
 import tensorflow as tf
 import tensorflow_addons as tfa
 

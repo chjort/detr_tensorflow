@@ -1,9 +1,9 @@
 import numpy as np
 import tensorflow as tf
+import tensorflow_addons as tfa
 
 from chambers.utils.tf import batch_linear_sum_assignment_ragged, lsa_to_batch_indices
-from .iou import GIoULoss2
-from .losses import L1Loss2
+from .losses import L1Loss
 from .pairwise import pairwise_giou as _pairwise_giou, pairwise_l1 as _pairwise_l1
 
 
@@ -27,8 +27,8 @@ class HungarianLoss(tf.keras.losses.Loss):
 
         self.ce_loss_fn = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True,
                                                                         reduction=tf.keras.losses.Reduction.NONE)
-        self.l1_loss_fn = L1Loss2(reduction=tf.keras.losses.Reduction.NONE)
-        self.giou_loss_fn = GIoULoss2(reduction=tf.keras.losses.Reduction.NONE)
+        self.l1_loss_fn = L1Loss(reduction=tf.keras.losses.Reduction.NONE)
+        self.giou_loss_fn = tfa.losses.GIoULoss("giou", reduction=tf.keras.losses.Reduction.NONE)
         self.lsa_losses = [pairwise_sparse_softmax, pairwise_l1, pairwise_giou]
 
         self.class_weights = tf.concat([tf.ones(self.n_classes, dtype=tf.float32),
