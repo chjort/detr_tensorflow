@@ -47,6 +47,7 @@ print("\n### BUILDING MODEL ###")
 
 def build_and_compile_detr():
     return_decode_sequence = True
+    mask_value = -1.
     detr = DETR(input_shape=(None, None, 3),
                 n_classes=N_CLASSES,
                 n_object_queries=100,
@@ -57,7 +58,7 @@ def build_and_compile_detr():
                 num_decoder_layers=6,
                 dropout_rate=0.1,
                 return_decode_sequence=return_decode_sequence,
-                mask_value=-1.
+                mask_value=mask_value
                 )
 
     # 150 epoch schedule: lr = lr * 0.1 after 100 epochs
@@ -80,7 +81,7 @@ def build_and_compile_detr():
     hungarian = HungarianLoss(n_classes=N_CLASSES,
                               loss_weights=[1, 5, 2],
                               lsa_loss_weights=[1, 5, 2],
-                              mask_value=-1.,
+                              mask_value=mask_value,
                               sequence_input=return_decode_sequence)
     detr.compile(optimizer=opt,
                  loss=hungarian,
@@ -103,9 +104,7 @@ detr.summary()
 
 # set training configuration
 print("\n### TRAINING ###")
-EPOCHS = 10  # 150
-n_train = 416
-n_val = 416
+EPOCHS = 50  # 150
 STEPS_PER_EPOCH = n_train // GLOBAL_BATCH_SIZE
 VAL_STEPS_PER_EPOCH = n_val // GLOBAL_BATCH_SIZE
 
@@ -159,43 +158,4 @@ history = detr.fit(train_dataset,
                    callbacks=callbacks
                    )
 
-# Tensorboard: # ssh -L 6006:127.0.0.1:6006 crr@40.68.160.55
-
-""" TODO:
-* Test model on 8 GPUs
-    * Set EPOCHS = 150
-"""
-
-""" 4 GPU (bs 416, decode_sequence=True)
-26/26 [==============================] - 97s 4s/step - loss: 86.8079
-Epoch 2/10
-26/26 [==============================] - 27s 1s/step - loss: 52.3061
-Epoch 3/10
-26/26 [==============================] - 28s 1s/step - loss: 48.4626
-Epoch 4/10
-26/26 [==============================] - 28s 1s/step - loss: 46.8509
-Epoch 5/10
-26/26 [==============================] - 28s 1s/step - loss: 44.9585
-
-8 GPU (bs 416, decode_sequence=True)
-13/13 [==============================] - 171s 13s/step - loss: 99.2107
-Epoch 2/10
-13/13 [==============================] - 21s 2s/step - loss: 57.3480
-Epoch 3/10
-13/13 [==============================] - 22s 2s/step - loss: 52.3514
-Epoch 4/10
-13/13 [==============================] - 21s 2s/step - loss: 50.0755
-Epoch 5/10
-13/13 [==============================] - 23s 2s/step - loss: 49.0004
-
-8 GPU (bs 416, decode_sequence=False)
-13/13 [==============================] - 157s 12s/step - loss: 21.0014
-Epoch 2/10
-13/13 [==============================] - 11s 876ms/step - loss: 9.3689
-Epoch 3/10
-13/13 [==============================] - 11s 851ms/step - loss: 8.2976
-Epoch 4/10
-13/13 [==============================] - 11s 877ms/step - loss: 8.0504
-Epoch 5/10
-13/13 [==============================] - 13s 964ms/step - loss: 7.9375
-"""
+# Tensorboard: # ssh -L 6006:127.0.0.1:6006 crr@51.144.79.65
