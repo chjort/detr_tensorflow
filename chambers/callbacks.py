@@ -4,7 +4,7 @@ from collections.abc import Iterable
 
 import tensorflow as tf
 
-from chambers.losses.hungarian import HungarianLoss as _HungarianLoss
+from chambers.losses.hungarian_2 import HungarianLoss as _HungarianLoss
 from chambers.models.detr import post_process
 from chambers.utils.image import read_image, resnet_imagenet_normalize
 from chambers.utils.utils import plot_results
@@ -146,6 +146,7 @@ class HungarianLossLogger(tf.keras.callbacks.Callback):
                              "only be used when the model is compiled with HungarianLoss.")
 
         if self.hungarian is None:
+            # TODO: Switch to new optimized HungarianLoss
             self.hungarian = _HungarianLoss(n_classes=self.model.loss.n_classes,
                                             no_class_weight=self.model.loss.no_class_weight,
                                             loss_weights=self.model.loss.loss_weights,
@@ -164,9 +165,14 @@ class HungarianLossLogger(tf.keras.callbacks.Callback):
         y_pred = self.model.predict(self.dataset, steps=self.steps)
         y_pred = tf.split(y_pred, y_pred.shape[0] // self.batch_size)
         losses = [self.hungarian(yt, yp) for yt, yp in zip(self.y_true, y_pred)]
-        losses = tf.reduce_mean(losses, axis=0).numpy()
 
-        logs["val_loss"] = losses.sum()
+        # TODO: Handle new optimized loss
+        # total_losses = [tf.reduce_sum(loss) for loss in losses]
+        # val_loss = tf.reduce_mean(total_losses)
+        # logs["val_loss"] = val_loss.numpy()
+
+        losses = tf.reduce_mean(losses, axis=0).numpy()  # TODO: This is wrong
+        logs["val_loss"] = losses.sum()  # TODO: Remove
 
         # the loss of the last decoder layer. (The actual predictions)
         losses_last = losses[-1]
