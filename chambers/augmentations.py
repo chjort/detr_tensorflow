@@ -122,7 +122,23 @@ def flip_left_right(img, boxes):
     return img, boxes
 
 
-def resize(img, boxes, min_side=800, max_side=1333):
+def random_flip_left_right(img, boxes):
+    img, boxes = tf.cond(tf.random.uniform([1], 0, 1) > 0.5,
+                         true_fn=lambda: flip_left_right(img, boxes),
+                         false_fn=lambda: (img, boxes)
+                         )
+    return img, boxes
+
+
+def random_flip_up_down(img, boxes):
+    img, boxes = tf.cond(tf.random.uniform([1], 0, 1) > 0.5,
+                         true_fn=lambda: flip_up_down(img, boxes),
+                         false_fn=lambda: (img, boxes)
+                         )
+    return img, boxes
+
+
+def resize(img, boxes, shape=None, min_side=800, max_side=1333):
     """
 
 
@@ -137,7 +153,10 @@ def resize(img, boxes, min_side=800, max_side=1333):
     :return:
     :rtype:
     """
-    imgr = _resize(img, min_side=min_side, max_side=max_side)
+    if shape is None:
+        imgr = _resize(img, min_side=min_side, max_side=max_side)
+    else:
+        imgr = tf.image.resize(img, shape)
 
     img_hw = tf.shape(img)[:2]
     imgr_hw = tf.shape(imgr)[:2]
