@@ -9,7 +9,7 @@ from chambers.losses.hungarian import HungarianLoss
 from chambers.models.detr import DETR
 from chambers.optimizers import LearningRateMultiplier
 from chambers.utils.utils import timestamp_now
-from data.tf_datasets import load_coco_tf, CLASSES_TF
+from data.tf_datasets import load_coco_tf, CLASSES_TF, load_coco, CLASSES_COCO
 
 # model_path = "outputs/2020-10-04_19-19-45/checkpoints/model-init.h5"
 model_path = None
@@ -30,16 +30,45 @@ BATCH_SIZE_PER_REPLICA = 4
 GLOBAL_BATCH_SIZE = BATCH_SIZE_PER_REPLICA * strategy.num_replicas_in_sync
 
 print("\n### LOADING DATA ###")
-train_dataset, n_train = load_coco_tf("train", GLOBAL_BATCH_SIZE, "/datadrive/crr/tensorflow_datasets")
-val_dataset, n_val = load_coco_tf("validation", GLOBAL_BATCH_SIZE, "/datadrive/crr/tensorflow_datasets")
+# train_dataset, n_train = load_coco_tf("train", GLOBAL_BATCH_SIZE, "/datadrive/crr/tensorflow_datasets")
+# val_dataset, n_val = load_coco_tf("validation", GLOBAL_BATCH_SIZE, "/datadrive/crr/tensorflow_datasets")
+train_dataset, n_train = load_coco("/datadrive/crr/datasets/coco", "train", GLOBAL_BATCH_SIZE)
+val_dataset, n_val = load_coco("/datadrive/crr/datasets/coco", "val", GLOBAL_BATCH_SIZE)
 
 train_dataset = train_dataset.prefetch(-1)
 val_dataset = val_dataset.prefetch(-1)
 
-N_CLASSES = len(CLASSES_TF)
+CLASSES = CLASSES_COCO
+# CLASSES = CLASSES_TF
+N_CLASSES = len(CLASSES)
 print("Number of training samples:", n_train)
 print("Number of validation samples:", n_val)
 print("Number of classes:", N_CLASSES)
+
+# %%
+# from chambers.utils.utils import plot_results
+# from chambers.utils.image import resnet_imagenet_denormalize
+# from chambers.utils.masking import remove_padding_image, remove_padding_box
+# from chambers.augmentations import resize, box_denormalize_yxyx, box_normalize_yxyx, flip_left_right
+#
+# it = iter(train_dataset)
+# x, y = next(it)
+# x = x[0]
+# y = y[0]
+#
+# y = y[:, :-1]
+# # xp = remove_padding_image(x, -1.)
+# xp = x
+# xp = resnet_imagenet_denormalize(xp)
+# yp = remove_padding_box(y, -1.)
+#
+# print(xp.shape)
+# plot_results(xp, yp)
+#
+# yp = box_denormalize_yxyx(yp, xp)
+# aug fn
+# yp = box_normalize_yxyx(yp, xp)
+# plot_results(xp, yp)
 
 # %% building model
 print("\n### BUILDING MODEL ###")
@@ -49,6 +78,7 @@ def build_and_compile_detr():
     return_decode_sequence = True
     mask_value = -1.
     detr = DETR(input_shape=(None, None, 3),
+    # detr=DETR(input_shape=(768, 768, 3),
                 n_classes=N_CLASSES,
                 n_object_queries=100,
                 embed_dim=256,
@@ -76,7 +106,13 @@ def build_and_compile_detr():
                                amsgrad=False,
                                )
 
-    opt = LearningRateMultiplier(opt, lr_multipliers={"resnet50": 0.1})
+    # TODO: Could the problem be that learning rates are reduced for every step???
+    #   Causing the model to not learn anything after around ~1200 steps with a loss of ~44.
+    #   After this point the loss increases as the model is shown new examples but does not learn.
+    opt = LearningRateMultiplier(opt,
+                                 lr_multipliers={var.name: 0.1 for var in detr.get_layer("resnet50").variables}
+                                 # lr_multipliers={"resnet50": 0.1}
+                                 )
 
     hungarian = HungarianLoss(n_classes=N_CLASSES,
                               loss_weights=[1, 5, 2],
@@ -104,7 +140,7 @@ detr.summary()
 
 # set training configuration
 print("\n### TRAINING ###")
-EPOCHS = 50  # 150
+EPOCHS = 10  # 150
 STEPS_PER_EPOCH = n_train // GLOBAL_BATCH_SIZE
 VAL_STEPS_PER_EPOCH = n_val // GLOBAL_BATCH_SIZE
 
@@ -141,7 +177,7 @@ callbacks = [
                                           "samples/sample1.png",
                                           "samples/sample2.jpg"
                                           ],
-                             label_names=CLASSES_TF
+                             label_names=CLASSES
                              ),
     tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
                                        monitor="val_loss",

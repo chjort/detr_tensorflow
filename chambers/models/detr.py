@@ -161,38 +161,46 @@ def DETR(input_shape, n_classes, n_object_queries, embed_dim, num_heads, dim_fee
     inputs = tf.keras.layers.Input(shape=input_shape)
 
     if mask_value is not None:
-        x_enc = tf.keras.layers.Masking(mask_value=mask_value)(inputs)
+        x = tf.keras.layers.Masking(mask_value=mask_value)(inputs)
     else:
-        x_enc = inputs
+        x = inputs
 
-    with tensorflow.python.keras.backend.get_graph().as_default(), tf.name_scope("resnet50"):
-        backbone = tf.keras.applications.ResNet50(input_shape=input_shape,
-                                                  include_top=False,
-                                                  weights="imagenet")
+    backbone = tf.keras.applications.ResNet50(input_shape=input_shape,
+                                              include_top=False,
+                                              weights="imagenet")
+    # with tensorflow.python.keras.backend.get_graph().as_default(), tf.name_scope("resnet50"):
+    #     backbone = tf.keras.applications.ResNet50(input_shape=input_shape,
+    #                                               include_top=False,
+    #                                               weights="imagenet")
     for layer in backbone.layers:
         if isinstance(layer, tf.keras.layers.BatchNormalization):
             layer.trainable = False
 
-    x_enc = backbone(x_enc)
-    x_enc = DownsampleMasking()(x_enc)
+    x = backbone(x)
+    if mask_value is not None:
+        x = DownsampleMasking()(x)
 
     proj = tf.keras.layers.Conv2D(embed_dim, kernel_size=1, name='input_proj')
-    x_enc = proj(x_enc)
+    x = proj(x)
 
     if mask_value is not None:
         set_supports_masking(backbone, verbose=False)
         proj.supports_masking = True
 
-    pos_enc = PositionalEmbedding2D(embed_dim, normalize=True, add_to_input=False, name="pos_enc")(x_enc)
+    pos_enc = PositionalEmbedding2D(embed_dim, normalize=True, add_to_input=False, name="pos_enc")(x)
     pos_enc = tf.keras.layers.Reshape([-1, embed_dim], name="pos_enc_sequence")(pos_enc)  # (batch_size, h*w, embed_dim)
-    x_enc = ReshapeWithMask([-1, embed_dim], [-1], name="img_features_sequence")(x_enc)  # (batch_size, h*w, embed_dim)
+
+    if mask_value is not None:
+        x = ReshapeWithMask([-1, embed_dim], [-1], name="img_features_sequence")(x)  # (batch_size, h*w, embed_dim)
+    else:
+        x = tf.keras.layers.Reshape([-1, embed_dim], name="img_features_sequence")(x)
 
     enc_output = EncoderDETR(embed_dim,
                              num_heads,
                              dim_feedforward,
                              num_encoder_layers,
                              dropout_rate,
-                             norm=False)([x_enc, pos_enc])
+                             norm=False)([x, pos_enc])
     x = DecoderDETR(n_object_queries,
                     embed_dim,
                     num_heads,
