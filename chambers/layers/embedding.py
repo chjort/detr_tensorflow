@@ -10,6 +10,9 @@ class PositionalEmbedding1D(tf.keras.layers.Layer):
         self.add_to_input = add_to_input
         self.supports_masking = True
 
+    def compute_output_shape(self, input_shape):
+        return input_shape
+
     def call(self, inputs, mask=None, **kwargs):
         tf.assert_rank(inputs, 3)
 
@@ -79,6 +82,9 @@ class PositionalEmbedding2D(tf.keras.layers.Layer):
         self.eps = eps
         self.add_to_input = add_to_input
         self.supports_masking = True
+
+    def compute_output_shape(self, input_shape):
+        return input_shape
 
     def call(self, inputs, mask=None, **kwargs):
         tf.assert_rank(inputs, 4)
