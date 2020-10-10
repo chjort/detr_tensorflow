@@ -1,15 +1,15 @@
 import tensorflow as tf
 import tensorflow_datasets as tfds
 
-from chambers.augmentations import random_resize_min, box_denormalize_yxyx, flip_left_right, \
-    random_size_crop, resize, box_normalize_yxyx
+from chambers.augmentations import random_resize_min, box_denormalize_yxyx, \
+    random_size_crop, resize, box_normalize_yxyx, random_flip_left_right
 from chambers.utils.boxes import box_xywh_to_yxyx
 from chambers.utils.image import read_jpeg, resnet_imagenet_normalize
 from data.coco import CocoDetection
 
 N_PARALLEL = -1
 
-CLASSES = [
+CLASSES_COCO = [
     'N/A', 'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus',
     'train', 'truck', 'boat', 'traffic light', 'fire hydrant', 'N/A',
     'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse',
@@ -43,10 +43,7 @@ CLASSES_TF = [
 
 
 def augment(img, boxes, labels):
-    img, boxes = tf.cond(tf.random.uniform([1], 0, 1) > 0.5,
-                         true_fn=lambda: flip_left_right(img, boxes),
-                         false_fn=lambda: (img, boxes)
-                         )
+    img, boxes = random_flip_left_right(img, boxes)
 
     min_sides = [480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800]
 
@@ -70,6 +67,8 @@ def augment(img, boxes, labels):
 
 def augment_val(img, boxes, labels):
     img, boxes = resize(img, boxes, min_side=800, max_side=1333)
+    # img, boxes = random_flip_left_right(img, boxes)
+    # img, boxes = resize(img, boxes, shape=(768, 768))
 
     return img, boxes, labels
 
@@ -136,6 +135,7 @@ def load_coco_tf(split, batch_size, data_dir=None):
         dataset = dataset.repeat()
         # dataset = dataset.shuffle(1024)
         dataset = dataset.map(augment, num_parallel_calls=N_PARALLEL)
+        # dataset = dataset.map(augment_val, num_parallel_calls=N_PARALLEL)
     else:
         dataset = dataset.map(augment_val, num_parallel_calls=N_PARALLEL)
     dataset = dataset.map(normalize, num_parallel_calls=N_PARALLEL)
