@@ -92,8 +92,9 @@ def build_and_compile_detr():
                 )
 
     # 150 epoch schedule: lr = lr * 0.1 after 100 epochs
+    # TODO NOTE!!!! `decay_steps` is number of batch steps not epochs!
     lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(initial_learning_rate=1e-4,
-                                                                 decay_steps=100,
+                                                                 decay_steps=100,  # TODO NOTE: Multiply this with steps per epoch
                                                                  decay_rate=0.1,
                                                                  staircase=True)
 
